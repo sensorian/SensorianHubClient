@@ -40,7 +40,7 @@ imuSensor.configureOrientation()
 AltiBar = altibar.MPL3115A2()
 AltiBar.ActiveMode()
 AltiBar.BarometerMode()
-print "Giving the Barometer 2 seconds"
+#print "Giving the Barometer 2 seconds or it won't work"
 time.sleep(2)
 CapTouch = touch.CAP1203()
 
@@ -79,6 +79,8 @@ watchedInterface = "wlan0"
 interfaceIP = "0.0.0.0"
 publicIP = "0.0.0.0"
 button = 0
+displayEnabled = True
+printEnabled = False
 lockOrientation = False
 defaultOrientation = 0
 sleepTime = 1
@@ -505,7 +507,6 @@ def PrintValues():
 def SendValues():
     rtcTime = GetDateTime()
     TS = "20" + '{:02d}'.format(rtcTime.year) + "-" + '{:02d}'.format(rtcTime.month) + "-" + '{:02d}'.format(rtcTime.date) + " " + '{:02d}'.format(rtcTime.hour) + ":" + '{:02d}'.format(rtcTime.min)+ ":" + '{:02d}'.format(rtcTime.sec)
-    #print "TS: " + TS
     url = 'http://sensorianhub.azurewebsites.net/insertData.php'
     payload = {'HW': str(GetSerial()),
                'TS': TS,
@@ -514,15 +515,15 @@ def SendValues():
                'LUX': str(GetLight()), #YELLOW
                'Temp': str(GetAmbientTemp()), #GREEN
                'Press': str(GetAmbientPressure()),#BLUE
-               'X': str(float(GetAccelX()/1000)),
-               'Y': str(float(GetAccelY()/1000)),
-               'Z': str(float(GetAccelZ()/1000))
+               'X': str(GetAccelX()/1000.0),
+               'Y': str(GetAccelY()/1000.0),
+               'Z': str(GetAccelZ()/1000.0)
                }
     try:
         r = requests.post(url, data=json.dumps(payload), timeout=postTimeout)
-        print r.text
+        #print r.text #For debugging POST requests
     except:
-        print "POST ERROR"
+        print "POST ERROR - Check connection and server"
 
 methods = {"UpdateDateTime" : UpdateDateTime,
            "UpdateAmbient" : UpdateAmbient,
@@ -686,6 +687,30 @@ def Config():
             parser.set('Accelerometer','accelinterval',str(accelInterval))
     finally:
         print "Accelerometer Interval: " + str(accelInterval)
+
+    global displayEnabled
+    try:
+        displayEnabled = parser.getboolean('UI','displayenabled')
+    except (ConfigParser.NoSectionError, ConfigParser.NoOptionError, ValueError):
+        try:
+            parser.set('UI','displayenabled',str(displayEnabled))
+        except(ConfigParser.NoSectionError):
+            parser.add_section('UI')
+            parser.set('UI','displayenabled',str(displayEnabled))
+    finally:
+        print "Display Enabled: " + str(displayEnabled)
+
+    global printEnabled
+    try:
+        printEnabled = parser.getboolean('UI','printenabled')
+    except (ConfigParser.NoSectionError, ConfigParser.NoOptionError, ValueError):
+        try:
+            parser.set('UI','printenabled',str(printEnabled))
+        except(ConfigParser.NoSectionError):
+            parser.add_section('UI')
+            parser.set('UI','printenabled',str(printEnabled))
+    finally:
+        print "Print Enabled: " + str(printEnabled)
         
     with open('client.cfg', 'w') as configfile:
         parser.write(configfile)
@@ -728,8 +753,10 @@ def main():
     #SendValues()
 
     while True:
-        #PrintValues()
-        DisplayValues()
+        if (printEnabled):
+            PrintValues()
+        if (displayEnabled):
+            DisplayValues()
         time.sleep(sleepTime)
  
 if __name__=="__main__":
