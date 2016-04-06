@@ -82,6 +82,14 @@ button = 0
 lockOrientation = False
 defaultOrientation = 0
 sleepTime = 1
+postInterval = 4
+postTimeout = 5
+ambientInterval = 5
+lightInterval = 1
+cpuTempInterval = 5
+interfaceInterval = 30
+publicInterval = 30
+accelInterval = 1
 
 #Lock to ensure one sensor used at a time
 I2CLock = threading.Lock()
@@ -511,7 +519,7 @@ def SendValues():
                'Z': str(float(GetAccelZ()/1000))
                }
     try:
-        r = requests.post(url, data=json.dumps(payload), timeout=5)
+        r = requests.post(url, data=json.dumps(payload), timeout=postTimeout)
         print r.text
     except:
         print "POST ERROR"
@@ -528,6 +536,9 @@ methods = {"UpdateDateTime" : UpdateDateTime,
            }
 
 def Config():
+    print "-------------------------"
+    print "Configuring Settings"
+    
     parser = ConfigParser.SafeConfigParser()
 
     parser.read('client.cfg')
@@ -541,8 +552,8 @@ def Config():
         except(ConfigParser.NoSectionError):
             parser.add_section('UI')
             parser.set('UI','defaultorientation',str(defaultOrientation))
-
-    print "Default: " + str(defaultOrientation)
+    finally:
+        print "Default Orientation: " + str(defaultOrientation)
 
     global lockOrientation
     try:
@@ -553,8 +564,8 @@ def Config():
         except(ConfigParser.NoSectionError):
             parser.add_section('UI')
             parser.set('UI','lockorientation',str(lockOrientation))
-            
-    print "Lock: " + str(lockOrientation)
+    finally:
+        print "Lock Orientation: " + str(lockOrientation)
     
     global sleepTime
     try:
@@ -564,13 +575,123 @@ def Config():
             parser.set('UI','refreshinterval',str(sleepTime))
         except(ConfigParser.NoSectionError):
             parser.add_section('UI')
-            parser.set('UI','refreshinterval',str(sleepTime))            
-        
-    print "Sleep Time: " + str(sleepTime)
+            parser.set('UI','refreshinterval',str(sleepTime))
+    finally:        
+        print "Refresh Interval: " + str(sleepTime)
 
+    global watchedInterface
+    try:
+        watchedInterface = parser.get('General','watchedinterface')
+    except (ConfigParser.NoSectionError, ConfigParser.NoOptionError, ValueError):
+        try:
+            parser.set('General','watchedinterface',watchedInterface)
+        except(ConfigParser.NoSectionError):
+            parser.add_section('General')
+            parser.set('General','watchedinterface',watchedInterface)
+    finally:
+        print "Watched Interface: " + watchedInterface
+
+    global postInterval
+    try:
+        postInterval = parser.getfloat('Requests','postinterval')
+    except (ConfigParser.NoSectionError, ConfigParser.NoOptionError, ValueError):
+        try:
+            parser.set('Requests','postinterval',str(postInterval))
+        except(ConfigParser.NoSectionError):
+            parser.add_section('Requests')
+            parser.set('Requests','postinterval',str(postInterval))
+    finally:
+        print "POST Interval: " + str(postInterval)
+
+    global postTimeout
+    try:
+        postTimeout = parser.getfloat('Requests','posttimeout')
+    except (ConfigParser.NoSectionError, ConfigParser.NoOptionError, ValueError):
+        try:
+            parser.set('Requests','posttimeout',str(postTimeout))
+        except(ConfigParser.NoSectionError):
+            parser.add_section('Requests')
+            parser.set('Requests','posttimeout',str(postTimeout))
+    finally:
+        print "POST Timeout: " + str(postTimeout)
+
+    global ambientInterval
+    try:
+        ambientInterval = parser.getfloat('Ambient','ambientinterval')
+    except (ConfigParser.NoSectionError, ConfigParser.NoOptionError, ValueError):
+        try:
+            parser.set('Ambient','ambientinterval',str(ambientInterval))
+        except(ConfigParser.NoSectionError):
+            parser.add_section('Ambient')
+            parser.set('Ambient','ambientinterval',str(ambientInterval))
+    finally:
+        print "Ambient Interval: " + str(ambientInterval)
+    
+    global lightInterval
+    try:
+        lightInterval = parser.getfloat('Light','lightinterval')
+    except (ConfigParser.NoSectionError, ConfigParser.NoOptionError, ValueError):
+        try:
+            parser.set('Light','lightinterval',str(lightInterval))
+        except(ConfigParser.NoSectionError):
+            parser.add_section('Light')
+            parser.set('Light','lightinterval',str(lightInterval))
+    finally:
+        print "Light Interval: " + str(lightInterval)
+
+    global cpuTempInterval
+    try:
+        cpuTempInterval = parser.getfloat('General','cputempinterval')
+    except (ConfigParser.NoSectionError, ConfigParser.NoOptionError, ValueError):
+        try:
+            parser.set('General','cputempinterval',str(cpuTempInterval))
+        except(ConfigParser.NoSectionError):
+            parser.add_section('General')
+            parser.set('General','cputempinterval',str(cpuTempInterval))
+    finally:
+        print "CPU Temp Interval: " + str(cpuTempInterval)
+
+    global interfaceInterval
+    try:
+        interfaceInterval = parser.getfloat('General','interfaceinterval')
+    except (ConfigParser.NoSectionError, ConfigParser.NoOptionError, ValueError):
+        try:
+            parser.set('General','interfaceinterval',str(interfaceInterval))
+        except(ConfigParser.NoSectionError):
+            parser.add_section('General')
+            parser.set('General','interfaceinterval',str(interfaceInterval))
+    finally:
+        print "Local IP Interval: " + str(interfaceInterval)
+
+    global publicInterval
+    try:
+        publicInterval = parser.getfloat('General','publicinterval')
+    except (ConfigParser.NoSectionError, ConfigParser.NoOptionError, ValueError):
+        try:
+            parser.set('General','publicinterval',str(publicInterval))
+        except(ConfigParser.NoSectionError):
+            parser.add_section('General')
+            parser.set('General','publicinterval',str(publicInterval))
+    finally:
+        print "Public IP Interval: " + str(publicInterval)
+
+    global accelInterval
+    try:
+        accelInterval = parser.getfloat('Accelerometer','accelinterval')
+    except (ConfigParser.NoSectionError, ConfigParser.NoOptionError, ValueError):
+        try:
+            parser.set('Accelerometer','accelinterval',str(accelInterval))
+        except(ConfigParser.NoSectionError):
+            parser.add_section('Accelerometer')
+            parser.set('Accelerometer','accelinterval',str(accelInterval))
+    finally:
+        print "Accelerometer Interval: " + str(accelInterval)
+        
     with open('client.cfg', 'w') as configfile:
         parser.write(configfile)
         os.system("chmod 777 client.cfg")
+
+    print "-------------------------"
 
 def main():
 
@@ -579,28 +700,28 @@ def main():
     timeThread = GeneralThread(0, "TimeThread", 1, "UpdateDateTime")
     timeThread.start()
 
-    ambientThread = GeneralThread(1, "AmbientThread", 1, "UpdateAmbient")
+    ambientThread = GeneralThread(1, "AmbientThread", ambientInterval, "UpdateAmbient")
     ambientThread.start()
     
-    lightThread = GeneralThread(2, "LightThread", 1, "UpdateLight")
+    lightThread = GeneralThread(2, "LightThread", lightInterval, "UpdateLight")
     lightThread.start()
 
-    cpuThread = GeneralThread(3, "CPUTempThread", 5, "UpdateCPUTemp")
+    cpuThread = GeneralThread(3, "CPUTempThread", cpuTempInterval, "UpdateCPUTemp")
     cpuThread.start()
 
-    interfaceIPThread = GeneralThread(4, "InterfaceIPThread", 30, "UpdateWatchedInterfaceIP")
+    interfaceIPThread = GeneralThread(4, "InterfaceIPThread", interfaceInterval, "UpdateWatchedInterfaceIP")
     interfaceIPThread.start()
 
-    publicIPThread = GeneralThread(5, "PublicIPThread", 30, "UpdatePublicIP")
+    publicIPThread = GeneralThread(5, "PublicIPThread", publicInterval, "UpdatePublicIP")
     publicIPThread.start()
     
-    accelThread = GeneralThread(6, "AccelThread", 1, "UpdateAccelerometer")
+    accelThread = GeneralThread(6, "AccelThread", accelInterval, "UpdateAccelerometer")
     accelThread.start()
 
     buttonThread = GeneralThread(7, "ButtonThread", 1, "UpdateButton")
     buttonThread.start()
 
-    requestThread = GeneralThread(8, "SendThread", 4, "SendValues")
+    requestThread = GeneralThread(8, "SendThread", postInterval, "SendValues")
     requestThread.start()
 
     #time.sleep(5)
