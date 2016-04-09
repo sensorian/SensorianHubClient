@@ -1,29 +1,57 @@
+#Section pertaining to display related values
 [UI]
+#Default orientation to be used for the TFT LCD only if you choose
+#to not use the accelerometer to change the orientation dynamically
+#0 = Landscape Left, 1 = Landscape Right
+#2 = Portrait Up, 3 = Portrait Down
 defaultorientation = 0
+#Boolean toggle to lock the TFT LCD to the above orientation
 lockorientation = False
+#How often to update the console or TFT LCD in seconds
 refreshinterval = 1
+#Boolean toggle to display the variables to the TFT LCD every refresh
 displayenabled = True
+#Boolean toggle to print the variables to the console every refresh
 printenabled = False
 
+#Section for other things
 [General]
+#The network interface on which to watch the local IP for the use of
+#SSH, FTP and the like, eg. wlan0, eth0, tun0
 watchedinterface = wlan0
+#How often to update the CPU temperature in seconds
 cputempinterval = 5
+#How often to update the local IP in seconds
 interfaceinterval = 30
+#How often to update the public IP in seconds
+#This makes a call to icanhazip.com, so keep it reasonable people
 publicinterval = 30
 
+#Section pertaining to POST and request related values
 [Requests]
+#How often to POST the variables to the given server URL in seconds
 postinterval = 4
+#How long to wait before timing out the POST request in seconds
 posttimeout = 5
+#The server URL to which you are POSTing the variables JSON
 serverurl = http://localhost/
+#The IFTTT Maker Channel API key to use for the Button 1 example
 iftttkey = xxxxxxxxxxxxxxxxxxxxxx
+#The IFTTT Recipe event name to use for the Button 1 example
 iftttevent = SensorianEvent
 
+#Section pertaining to temperature and pressure sensor related values
 [Ambient]
+#How often to update the temperature and pressure in seconds
 ambientinterval = 5
 
+#Section pertaining to light sensor related values
 [Light]
+#How often to update the light level in seconds
 lightinterval = 1
 
+#Section pertaining to accelerometer related values
 [Accelerometer]
+#How often to update the accelerometer and orientation in seconds
 accelinterval = 1
 
