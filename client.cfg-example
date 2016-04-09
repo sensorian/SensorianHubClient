@@ -14,9 +14,9 @@ publicinterval = 30
 [Requests]
 postinterval = 4
 posttimeout = 5
-serverurl = http://sensorianhub.azurewebsites.net/insertData.php
-iftttkey = devuUa1Zys4zvYHQdgLN2i
-iftttevent = SensorianButton1
+serverurl = http://localhost/
+iftttkey = xxxxxxxxxxxxxxxxxxxxxx
+iftttevent = SensorianEvent
 
 [Ambient]
 ambientinterval = 5
