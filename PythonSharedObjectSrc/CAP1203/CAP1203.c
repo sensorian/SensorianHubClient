@@ -166,9 +166,24 @@ unsigned char CAP1203_GetStatusReg(void)
  *@param pin Enables interrupt on the specific pin
  *@return none
  */
-void CAP1203_EnableInterrupt(button_type pin)
+void CAP1203_EnableInterrupt(int repeat, int release, button_type pin)
 {
-    CAP1203_Write(CAP1203ADDR,REPEAT_RATE,pin);     //Enable repeat rate for the input pins
+	if (repeat == 1)
+	{
+		CAP1203_Write(CAP1203ADDR,REPEAT_RATE,pin);     //Enable repeat rate for the input pins
+	}
+	else
+	{
+		CAP1203_Write(CAP1203ADDR,REPEAT_RATE,0x00);     //Disable repeat rate for the input pins
+	}
+	if (release == 1)
+	{
+		CAP1203_Write(CAP1203ADDR,CONFIG2,0x40);
+	}
+	else
+	{
+		CAP1203_Write(CAP1203ADDR,CONFIG2,0x41);
+	}
     CAP1203_Write(CAP1203ADDR,INT_ENABLE,pin);		//2:0 c2:c1:c0  last three bits are the specific channels
 }
 
