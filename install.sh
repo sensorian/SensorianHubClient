@@ -28,6 +28,7 @@ make
 sudo make check
 sudo make install
 cd ..
+cd ..
 
 #Compile the pressure sensor driver
 cd MPL3115A2
