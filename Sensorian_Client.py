@@ -101,6 +101,7 @@ currentMenu = "Top"
 menuElements = []
 menuPosition = 0
 parser = ConfigParser.SafeConfigParser()
+threads = []
 
 # Board Pin Numbers
 INT_PIN = 11    # Ambient Light Sensor Interrupt - BCM 17
@@ -550,6 +551,49 @@ def CheckSentinel(sentinel):
         state = False
     return state
 
+# Method for the threads to check if their sentinels have changed
+def SetSentinel(sentinel, state):
+    global timeEnabled, ambientEnabled, lightEnabled, cpuEnabled, interfaceIPEnabled
+    global publicIPEnabled, accelEnabled, buttonEnabled, sendEnabled
+    # Check the thread's method name against the statements to
+    # find their respective sentinel variables
+    if (sentinel == "UpdateDateTime"):
+        timeEnabledLock.acquire()
+        timeEnabled = state
+        timeEnabledLock.release()
+    elif (sentinel == "UpdateAmbient"):
+        ambientEnabledLock.acquire()
+        ambientEnabled = state
+        ambientEnabledLock.release()
+    elif (sentinel == "UpdateLight"):
+        lightEnabledLock.acquire()
+        lightEnabled = state
+        lightEnabledLock.release()
+    elif (sentinel == "UpdateCPUTemp"):
+        cpuEnabledLock.acquire()
+        cpuEnabled = state
+        cpuEnabledLock.release()
+    elif (sentinel == "UpdateWatchedInterfaceIP"):
+        interfaceIPEnabledLock.acquire()
+        interfaceIPEnabled = state
+        interfaceIPEnabledLock.release()
+    elif (sentinel == "UpdatePublicIP"):
+        publicIPEnabledLock.acquire()
+        publicIPEnabled = state
+        publicIPEnabledLock.release()
+    elif (sentinel == "UpdateAccelerometer"):
+        accelEnabledLock.acquire()
+        accelEnabled = state
+        accelEnabledLock.release()
+    elif (sentinel == "UpdateButton"):
+        buttonEnabledLock.acquire()
+        buttonEnabled = state
+        buttonEnabledLock.release()
+    elif (sentinel == "SendValues"):
+        sendEnabledLock.acquire()
+        sendEnabled = state
+        sendEnabledLock.release()
+
 
 # Example IFTTT integration to call a trigger on their Maker Channel when
 # a button is pressed
@@ -641,6 +685,16 @@ def ButtonHandler(pressed):
                     menuPositionLock.acquire()
                     menuPosition = 0
                     menuPositionLock.release()
+                elif (tempElements[tempMenuPos] == "CPU Temp Interval"):
+                    currentMenuLock.acquire()
+                    currentMenu = "CPU Temp Interval"
+                    currentMenuLock.release()
+                    menuElementsLock.acquire()
+                    menuElements = [1, 2, 3, 4, 5, 10, 15, 20, 30, 60]
+                    menuElementsLock.release()
+                    menuPositionLock.acquire()
+                    menuPosition = 0
+                    menuPositionLock.release()
             elif (tempMenu == "Watched Interface"):
                 global watchedInterface
                 newInterface = tempElements[tempMenuPos]
@@ -652,6 +706,25 @@ def ButtonHandler(pressed):
                 inMenuLock.acquire()
                 inMenu = False
                 inMenuLock.release()
+            elif (tempMenu == "CPU Temp Interval"):
+                newTempInterval = tempElements[tempMenuPos]
+                parser.set('General', 'cputempinterval', str(newTempInterval))
+                rebootThread("CPUTempThread", newTempInterval, "UpdateCPUTemp")
+                inMenuLock.acquire()
+                inMenu = False
+                inMenuLock.release()
+
+
+def rebootThread(threadName, threadInterval, sentinelName):
+    if (CheckSentinel(sentinelName) == True):
+        SetSentinel(sentinelName, False)
+        for t in threads:
+            if (t.getName() == threadName):
+                t.join()
+        SetSentinel(sentinelName, True)
+        newThread = GeneralThread(len(threads) + 1, threadName, threadInterval, sentinelName)
+        newThread.start()
+        threads.append(newThread)
 
 
 # Displays all the watched variables on the TFT LCD if enabled
@@ -711,7 +784,7 @@ def DisplayValues():
         menuElementsLock.release()
         for x in range(0,9):
             try:
-                textDraw2.text((18, x*12), tempElements[x], font=font)
+                textDraw2.text((18, x*12), str(tempElements[x]), font=font)
             except IndexError:
                 break
         menuPositionLock.acquire()
@@ -1023,47 +1096,34 @@ def main():
 
     # Create threads and start them to monitor the various sensors and
     # IP variables at their given intervals, 1 second interval for time/buttons
-    timeThread = GeneralThread(0, "TimeThread", 1, "UpdateDateTime")
-    timeThread.start()
+    global threads
 
-    ambientThread = GeneralThread(1, "AmbientThread", ambientInterval, "UpdateAmbient")
-    ambientThread.start()
+    # Fire up all the threads
+    rebootThread("TimeThread", 1, "UpdateDateTime")
+    rebootThread("AmbientThread", ambientInterval, "UpdateAmbient")
+    rebootThread("LightThread", lightInterval, "UpdateLight")
+    rebootThread("CPUTempThread", cpuTempInterval, "UpdateCPUTemp")
+    rebootThread("InterfaceIPThread", interfaceInterval, "UpdateWatchedInterfaceIP")
+    rebootThread("PublicIPThread", publicInterval, "UpdatePublicIP")
+    rebootThread("AccelThread", accelInterval, "UpdateAccelerometer")
+    rebootThread("SendThread", postInterval, "SendValues")
 
-    lightThread = GeneralThread(2, "LightThread", lightInterval, "UpdateLight")
-    lightThread.start()
-
-    cpuThread = GeneralThread(3, "CPUTempThread", cpuTempInterval, "UpdateCPUTemp")
-    cpuThread.start()
-
-    interfaceIPThread = GeneralThread(4, "InterfaceIPThread", interfaceInterval, "UpdateWatchedInterfaceIP")
-    interfaceIPThread.start()
-
-    publicIPThread = GeneralThread(5, "PublicIPThread", publicInterval, "UpdatePublicIP")
-    publicIPThread.start()
-
-    accelThread = GeneralThread(6, "AccelThread", accelInterval, "UpdateAccelerometer")
-    accelThread.start()
-
-    #buttonThread = GeneralThread(7, "ButtonThread", 60, "UpdateButton")
-    #buttonThread.start()
-
-    requestThread = GeneralThread(8, "SendThread", postInterval, "SendValues")
-    requestThread.start()
-
+    # Set up the GPIO for the touch buttons and LED
     GPIO.setup(CAP_PIN, GPIO.IN)
     GPIO.setup(LED_PIN, GPIO.OUT)
     GPIO.add_event_detect(CAP_PIN, GPIO.FALLING)
     GPIO.add_event_callback(CAP_PIN, ButtonEventHandler)
+
+    # Enable interrupts on the buttons
     CapTouch.clearInterrupt()
     CapTouch.enableInterrupt(0, 0, 0x07)
-
 
     # Loop the display and/or printing of variables if desired, waiting between
     # calls for the set or default refresh interval
     while True:
-        if (printEnabled):
+        if printEnabled:
             PrintValues()
-        if (displayEnabled):
+        if displayEnabled:
             DisplayValues()
         time.sleep(sleepTime)
 
