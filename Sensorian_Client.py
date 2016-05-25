@@ -100,6 +100,7 @@ inMenu = False
 currentMenu = "Top"
 menuElements = []
 menuPosition = 0
+parser = ConfigParser.SafeConfigParser()
 
 # Board Pin Numbers
 INT_PIN = 11    # Ambient Light Sensor Interrupt - BCM 17
@@ -641,6 +642,7 @@ def ButtonHandler(pressed):
                 interfaceLock.acquire()
                 watchedInterface = newInterface
                 interfaceLock.release()
+                parser.set('General', 'watchedinterface', newInterface)
                 UpdateWatchedInterfaceIP()
                 inMenuLock.acquire()
                 inMenu = False
@@ -788,7 +790,7 @@ methods = {"UpdateDateTime": UpdateDateTime,
 def Config():
     print "-------------------------"
     print "Configuring Settings"
-
+    global parser
     parser = ConfigParser.SafeConfigParser()
     # Read the config file if present
     parser.read('client.cfg')
@@ -1074,6 +1076,12 @@ if __name__ == "__main__":
     # respective repeat sentinels to False
     finally:
         GPIO.cleanup()
+
+        # Writes any changes to the config file back to disk that may have been made
+        # through the local config menu
+        with open('client.cfg', 'w') as configfile:
+            parser.write(configfile)
+            os.system("chmod 777 client.cfg")
 
         timeEnabledLock.acquire()
         timeEnabled = False
