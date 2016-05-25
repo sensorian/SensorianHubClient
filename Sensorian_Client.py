@@ -18,6 +18,7 @@ import socket
 import fcntl
 import struct
 import subprocess
+import RPi.GPIO as GPIO
 
 # Sensor initializations
 
@@ -98,6 +99,13 @@ accelInterval = 1
 inMenu = False
 currentMenu = "Top"
 menuElements = []
+menuPosition = 0
+
+# Board Pin Numbers
+INT_PIN = 11    # Ambient Light Sensor Interrupt - BCM 17
+LED_PIN = 12    # LED - BCM 18
+CAP_PIN = 13    # Capacitive Touch Button Interrupt - BCM 27
+GPIO.setmode(GPIO.BOARD)
 
 # Lock to ensure one sensor used at a time
 # Sensorian firmware not thread-safe without
@@ -135,6 +143,7 @@ accelZLock = threading.Lock()
 inMenuLock = threading.Lock()
 currentMenuLock = threading.Lock()
 menuElementsLock = threading.Lock()
+menuPositionLock = threading.Lock()
 
 
 # Updates the global CPU serial variable
@@ -467,20 +476,21 @@ def GetAccelZ():
 
 # Update the latest button press to the global variable
 def UpdateButton():
+    print "You Shouldn't Be Here..."
+
+
+# Update the button pressed when interrupted
+def ButtonEventHandler(pin):
     global button
     I2CLock.acquire()
     tempNewButton = CapTouch.readPressedButton()
     I2CLock.release()
     buttonLock.acquire()
-    tempOldButton = button
+    button = tempNewButton
     buttonLock.release()
     if (tempNewButton != 0):
-        if (tempOldButton != tempNewButton):
-            print "Old: " + str(tempOldButton) + " + New: " + str(tempNewButton)
-            ButtonHandler(tempNewButton)
-        buttonLock.acquire()
-        button = 0
-        buttonLock.release()
+        ButtonHandler(tempNewButton)
+
 
 # Get the latest update of the most recent button press
 def GetButton():
@@ -553,6 +563,7 @@ def ButtonHandler(pressed):
     global inMenu
     global currentMenu
     global menuElements
+    global menuPosition
     inMenuLock.acquire()
     tempInMenu = inMenu
     inMenuLock.release()
@@ -565,17 +576,72 @@ def ButtonHandler(pressed):
             currentMenuLock.acquire()
             currentMenu = "Top"
             currentMenuLock.release()
-            tempElements = ["Exit", "Nothing"]
             menuElementsLock.acquire()
-            menuElements = tempElements
+            menuElements = ["Exit", "General", "UI", "Requests", "Accelerometer", "Light", "Ambient"]
             menuElementsLock.release()
+            menuPositionLock.acquire()
+            menuPosition = 0
+            menuPositionLock.release()
     else:
         print "Menu Pressed " + str(pressed)
         currentMenuLock.acquire()
         tempMenu = currentMenu
         currentMenuLock.release()
-        if (tempMenu == "Top"):
-            if (pressed == 2):
+        menuElementsLock.acquire()
+        tempElements = menuElements
+        menuElementsLock.release()
+        tempLength = len(tempElements)
+        menuPositionLock.acquire()
+        tempMenuPos = menuPosition
+        menuPositionLock.release()
+        if (pressed == 1):
+            if (tempMenuPos != 0):
+                menuPositionLock.acquire()
+                menuPosition = tempMenuPos - 1
+                menuPositionLock.release()
+        elif (pressed == 3):
+            if (tempMenuPos != tempLength - 1):
+                menuPositionLock.acquire()
+                menuPosition = tempMenuPos + 1
+                menuPositionLock.release()
+        elif (pressed == 2):
+            if (tempMenu == "Top"):
+                if (tempElements[tempMenuPos] == "Exit"):
+                    inMenuLock.acquire()
+                    inMenu = False
+                    inMenuLock.release()
+                elif (tempElements[tempMenuPos] == "General"):
+                    currentMenuLock.acquire()
+                    currentMenu = "General"
+                    currentMenuLock.release()
+                    menuElementsLock.acquire()
+                    menuElements = ["Watched Interface", "CPU Temp Interval", "Interface Interval", "Public Interval"]
+                    menuElementsLock.release()
+                    menuPositionLock.acquire()
+                    menuPosition = 0
+                    menuPositionLock.release()
+            elif (tempMenu == "General"):
+                if (tempElements[tempMenuPos] == "Watched Interface"):
+                    currentMenuLock.acquire()
+                    currentMenu = "Watched Interface"
+                    currentMenuLock.release()
+                    proc = subprocess.Popen(["ls", "-1", "/sys/class/net"], stdout=subprocess.PIPE)
+                    (out, err) = proc.communicate()
+                    interfaces = out.rstrip()
+                    interfacesList = interfaces.split()
+                    menuElementsLock.acquire()
+                    menuElements = interfacesList
+                    menuElementsLock.release()
+                    menuPositionLock.acquire()
+                    menuPosition = 0
+                    menuPositionLock.release()
+            elif (tempMenu == "Watched Interface"):
+                global watchedInterface
+                newInterface = tempElements[tempMenuPos]
+                interfaceLock.acquire()
+                watchedInterface = newInterface
+                interfaceLock.release()
+                UpdateWatchedInterfaceIP()
                 inMenuLock.acquire()
                 inMenu = False
                 inMenuLock.release()
@@ -633,14 +699,18 @@ def DisplayValues():
         textDraw2.text((0, 108), "X: " + str(GetAccelX()) + " Y: " + str(GetAccelY()) + " Z: " + str(GetAccelZ()),
                        font=font)
     else:
-        textDraw2.text((0, 0), ">>", font=font)
+        menuElementsLock.acquire()
         tempElements = menuElements
-
+        menuElementsLock.release()
         for x in range(0,9):
             try:
                 textDraw2.text((18, x*12), tempElements[x], font=font)
             except IndexError:
                 break
+        menuPositionLock.acquire()
+        tempMenuPos = menuPosition
+        menuPositionLock.release()
+        textDraw2.text((0, tempMenuPos*12), ">>", font=font)
 
     # Rotate the image to the set orientation and add it to the LCD
     textDraw3 = textDraw.rotate(angle)
@@ -967,11 +1037,19 @@ def main():
     accelThread = GeneralThread(6, "AccelThread", accelInterval, "UpdateAccelerometer")
     accelThread.start()
 
-    buttonThread = GeneralThread(7, "ButtonThread", 1, "UpdateButton")
-    buttonThread.start()
+    #buttonThread = GeneralThread(7, "ButtonThread", 60, "UpdateButton")
+    #buttonThread.start()
 
     requestThread = GeneralThread(8, "SendThread", postInterval, "SendValues")
     requestThread.start()
+
+
+    GPIO.setup(CAP_PIN, GPIO.IN)
+    GPIO.add_event_detect(CAP_PIN, GPIO.FALLING)
+    GPIO.add_event_callback(CAP_PIN, ButtonEventHandler)
+    CapTouch.clearInterrupt()
+    CapTouch.enableInterrupt(0, 0, 0x07)
+
 
     # Loop the display and/or printing of variables if desired, waiting between
     # calls for the set or default refresh interval
@@ -995,6 +1073,8 @@ if __name__ == "__main__":
     # Tell all threads to stop if the main program stops by setting their
     # respective repeat sentinels to False
     finally:
+        GPIO.cleanup()
+
         timeEnabledLock.acquire()
         timeEnabled = False
         timeEnabledLock.release()
