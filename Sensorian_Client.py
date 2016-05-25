@@ -146,6 +146,11 @@ inMenuLock = threading.Lock()
 currentMenuLock = threading.Lock()
 menuElementsLock = threading.Lock()
 menuPositionLock = threading.Lock()
+defaultOrientationLock = threading.Lock()
+lockOrientationLock = threading.Lock()
+printEnabledLock = threading.Lock()
+displayEnabledLock = threading.Lock()
+sleepTimeLock = threading.Lock()
 
 
 # Updates the global CPU serial variable
@@ -557,7 +562,7 @@ def SetSentinel(sentinel, state):
     global publicIPEnabled, accelEnabled, buttonEnabled, sendEnabled
     # Check the thread's method name against the statements to
     # find their respective sentinel variables
-    if (sentinel == "UpdateDateTime"):
+    if sentinel == "UpdateDateTime":
         timeEnabledLock.acquire()
         timeEnabled = state
         timeEnabledLock.release()
@@ -623,15 +628,11 @@ def ButtonHandler(pressed):
             inMenuLock.acquire()
             inMenu = True
             inMenuLock.release()
-            currentMenuLock.acquire()
-            currentMenu = "Top"
-            currentMenuLock.release()
+            changeMenu("Top")
             menuElementsLock.acquire()
             menuElements = ["Exit", "General", "UI", "Requests", "Accelerometer", "Light", "Ambient"]
             menuElementsLock.release()
-            menuPositionLock.acquire()
-            menuPosition = 0
-            menuPositionLock.release()
+            cursorToTop()
     else:
         print "Menu Pressed " + str(pressed)
         currentMenuLock.acquire()
@@ -654,27 +655,42 @@ def ButtonHandler(pressed):
                 menuPositionLock.acquire()
                 menuPosition = tempMenuPos + 1
                 menuPositionLock.release()
+        # If the middle button was pressed, check the menu it was in
         elif (pressed == 2):
+            # If it was the top menu, which menu option was selected
             if (tempMenu == "Top"):
+                # If Exit was selected, close the menu
                 if (tempElements[tempMenuPos] == "Exit"):
-                    inMenuLock.acquire()
-                    inMenu = False
-                    inMenuLock.release()
+                    closeMenu()
+                # If General was selected, go into that sub-menu
                 elif (tempElements[tempMenuPos] == "General"):
-                    currentMenuLock.acquire()
-                    currentMenu = "General"
-                    currentMenuLock.release()
+                    changeMenu("General")
                     menuElementsLock.acquire()
-                    menuElements = ["Watched Interface", "CPU Temp Interval", "Interface Interval", "Public Interval"]
+                    menuElements = ["Back", "Watched Interface", "CPU Temp Interval", "Interface Interval",
+                                    "Public Interval"]
                     menuElementsLock.release()
-                    menuPositionLock.acquire()
-                    menuPosition = 0
-                    menuPositionLock.release()
+                    cursorToTop()
+                # If UI was selected, go into that sub-menu
+                elif (tempElements[tempMenuPos] == "UI"):
+                    changeMenu("UI")
+                    menuElementsLock.acquire()
+                    menuElements = ["Back", "Default Orientation", "Lock Orientation", "Refresh Interval",
+                                    "Display Enabled", "Print Enabled"]
+                    menuElementsLock.release()
+                    cursorToTop()
+            # If we are in the general sub-menu already, which one of these options was selected
             elif (tempMenu == "General"):
-                if (tempElements[tempMenuPos] == "Watched Interface"):
-                    currentMenuLock.acquire()
-                    currentMenu = "Watched Interface"
-                    currentMenuLock.release()
+                # If Back was selected, return to the Top menu
+                if (tempElements[tempMenuPos] == "Back"):
+                    changeMenu("Top")
+                    menuElementsLock.acquire()
+                    menuElements = ["Exit", "General", "UI", "Requests", "Accelerometer", "Light", "Ambient"]
+                    menuElementsLock.release()
+                    cursorToTop()
+                # If Watched Interface was selected, go into that sub-menu
+                elif (tempElements[tempMenuPos] == "Watched Interface"):
+                    changeMenu("Watched Interface")
+                    # Get the list of watchable interfaces before pulling up the menu
                     proc = subprocess.Popen(["ls", "-1", "/sys/class/net"], stdout=subprocess.PIPE)
                     (out, err) = proc.communicate()
                     interfaces = out.rstrip()
@@ -682,19 +698,33 @@ def ButtonHandler(pressed):
                     menuElementsLock.acquire()
                     menuElements = interfacesList
                     menuElementsLock.release()
-                    menuPositionLock.acquire()
-                    menuPosition = 0
-                    menuPositionLock.release()
+                    cursorToTop()
+                # If CPU Temp Interval was selected, go into that sub-menu
                 elif (tempElements[tempMenuPos] == "CPU Temp Interval"):
-                    currentMenuLock.acquire()
-                    currentMenu = "CPU Temp Interval"
-                    currentMenuLock.release()
+                    changeMenu("CPU Temp Interval")
+                    # Prepare a list of possible quick options for the interval
                     menuElementsLock.acquire()
                     menuElements = [1, 2, 3, 4, 5, 10, 15, 20, 30, 60]
                     menuElementsLock.release()
-                    menuPositionLock.acquire()
-                    menuPosition = 0
-                    menuPositionLock.release()
+                    cursorToTop()
+                # If Interface Interval was selected, go into that sub-menu
+                elif (tempElements[tempMenuPos] == "Interface Interval"):
+                    changeMenu("Interface Interval")
+                    # Prepare a list of possible quick options for the interval
+                    menuElementsLock.acquire()
+                    menuElements = [1, 2, 3, 4, 5, 10, 15, 20, 30, 60]
+                    menuElementsLock.release()
+                    cursorToTop()
+                # If Public Interval was selected, go into that sub-menu
+                elif (tempElements[tempMenuPos] == "Public Interval"):
+                    changeMenu("Public Interval")
+                    # Prepare a list of possible quick options for the interval
+                    menuElementsLock.acquire()
+                    menuElements = [10, 15, 20, 30, 60, 120, 240, 360, 480, 600]
+                    menuElementsLock.release()
+                    cursorToTop()
+            # If an option was selected in the Watched Interface menu, update the config parser with the new value
+            # as well as the global variable, no need to reboot the thread as it checks which interface each time
             elif (tempMenu == "Watched Interface"):
                 global watchedInterface
                 newInterface = tempElements[tempMenuPos]
@@ -703,16 +733,140 @@ def ButtonHandler(pressed):
                 interfaceLock.release()
                 parser.set('General', 'watchedinterface', newInterface)
                 UpdateWatchedInterfaceIP()
-                inMenuLock.acquire()
-                inMenu = False
-                inMenuLock.release()
+                closeMenu()
+            # If an option was selected in the following menus, update the config parser with the new value
+            # to be written on close and reboot the respective monitoring thread with the new value
             elif (tempMenu == "CPU Temp Interval"):
                 newTempInterval = tempElements[tempMenuPos]
                 parser.set('General', 'cputempinterval', str(newTempInterval))
                 rebootThread("CPUTempThread", newTempInterval, "UpdateCPUTemp")
-                inMenuLock.acquire()
-                inMenu = False
-                inMenuLock.release()
+                closeMenu()
+            elif (tempMenu == "Interface Interval"):
+                newInterfaceInterval = tempElements[tempMenuPos]
+                parser.set('General', 'interfaceinterval', str(newInterfaceInterval))
+                rebootThread("InterfaceIPThread", newInterfaceInterval, "UpdateWatchedInterfaceIP")
+                closeMenu()
+            elif (tempMenu == "Public Interval"):
+                newPublicInterval = tempElements[tempMenuPos]
+                parser.set('General', 'publicinterval', str(newPublicInterval))
+                rebootThread("PublicIPThread", newPublicInterval, "UpdatePublicIP")
+                closeMenu()
+            # If we are in the UI sub-menu already, which one of these options was selected
+            elif (tempMenu == "UI"):
+                # If Back was selected, return to the Top menu
+                if (tempElements[tempMenuPos] == "Back"):
+                    changeMenu("Top")
+                    menuElementsLock.acquire()
+                    menuElements = ["Exit", "General", "UI", "Requests", "Accelerometer", "Light", "Ambient"]
+                    menuElementsLock.release()
+                    cursorToTop()
+                # If Default Orientation was selected, go into that sub-menu
+                elif (tempElements[tempMenuPos] == "Default Orientation"):
+                    changeMenu("Default Orientation")
+                    # Prepare a list of possible quick options for the orientation
+                    menuElementsLock.acquire()
+                    menuElements = ["0 = Landscape Left", "1 = Landscape Right",
+                                    "2 = Portrait Up", "3 = Portrait Down"]
+                    menuElementsLock.release()
+                    cursorToTop()
+                # If Lock Orientation was selected, go into that sub-menu
+                elif (tempElements[tempMenuPos] == "Lock Orientation"):
+                    changeMenu("Lock Orientation")
+                    # Can only be True or False
+                    menuElementsLock.acquire()
+                    menuElements = [True, False]
+                    menuElementsLock.release()
+                    cursorToTop()
+                # If Refresh Interval was selected, go into that sub-menu
+                elif (tempElements[tempMenuPos] == "Refresh Interval"):
+                    changeMenu("Refresh Interval")
+                    # Prepare a list of possible quick options for the interval
+                    menuElementsLock.acquire()
+                    menuElements = [0.1, 0.25, 0.5, 0.75, 1, 1.5, 2, 2.5, 5, 10]
+                    menuElementsLock.release()
+                    cursorToTop()
+                # If Display Enabled was selected, go into that sub-menu
+                elif (tempElements[tempMenuPos] == "Display Enabled"):
+                    changeMenu("Display Enabled")
+                    # Can only be True or False
+                    menuElementsLock.acquire()
+                    menuElements = [True, False]
+                    menuElementsLock.release()
+                    cursorToTop()
+                # If Print Enabled was selected, go into that sub-menu
+                elif (tempElements[tempMenuPos] == "Print Enabled"):
+                    changeMenu("Print Enabled")
+                    # Can only be True or False
+                    menuElementsLock.acquire()
+                    menuElements = [True, False]
+                    menuElementsLock.release()
+                    cursorToTop()
+            elif (tempMenu == "Default Orientation"):
+                global defaultOrientation
+                newOrientationString = tempElements[tempMenuPos]
+                newOrientationSub = newOrientationString[0]
+                newOrientationInt = int(newOrientationSub)
+                defaultOrientationLock.acquire()
+                defaultOrientation = newOrientationInt
+                defaultOrientationLock.release()
+                parser.set('UI', 'defaultorientation', newOrientationSub)
+                closeMenu()
+            elif (tempMenu == "Lock Orientation"):
+                global lockOrientation
+                newLockOrientation = tempElements[tempMenuPos]
+                lockOrientationLock.acquire()
+                lockOrientation = newLockOrientation
+                lockOrientationLock.release()
+                parser.set('UI', 'lockorientation', str(newLockOrientation))
+                closeMenu()
+            elif (tempMenu == "Refresh Interval"):
+                global sleepTime
+                newRefreshInterval = tempElements[tempMenuPos]
+                parser.set('UI', 'refreshinterval', str(newRefreshInterval))
+                sleepTimeLock.acquire()
+                sleepTime = newRefreshInterval
+                sleepTimeLock.release()
+                closeMenu()
+            elif (tempMenu == "Display Enabled"):
+                global displayEnabled
+                newDisplayEnabled = tempElements[tempMenuPos]
+                parser.set('UI', 'displayenabled', str(newDisplayEnabled))
+                displayEnabledLock.acquire()
+                displayEnabled = newDisplayEnabled
+                displayEnabledLock.release()
+                closeMenu()
+            elif (tempMenu == "Print Enabled"):
+                global printEnabled
+                newPrintEnabled = tempElements[tempMenuPos]
+                parser.set('UI', 'printenabled', str(newPrintEnabled))
+                printEnabledLock.acquire()
+                printEnabled = newPrintEnabled
+                printEnabledLock.release()
+                closeMenu()
+
+
+# Changes the menu to the passed value
+def changeMenu(newMenu):
+    global currentMenu
+    currentMenuLock.acquire()
+    currentMenu = newMenu
+    currentMenuLock.release()
+
+
+# Close the LCD configuration menu
+def closeMenu():
+    global inMenu
+    inMenuLock.acquire()
+    inMenu = False
+    inMenuLock.release()
+
+
+# Brings the pointer arrow on the LCD menu to the top of whatever list is being shown
+def cursorToTop():
+    global menuPosition
+    menuPositionLock.acquire()
+    menuPosition = 0
+    menuPositionLock.release()
 
 
 def rebootThread(threadName, threadInterval, sentinelName):
@@ -732,10 +886,15 @@ def DisplayValues():
     disp.clear()
     # Checks if the orientation of the display should be locked
     # If so, force the default orientation from the config file
-    if (lockOrientation == False):
+    lockOrientationLock.acquire()
+    tempLockOrientation = lockOrientation
+    lockOrientationLock.release()
+    if (tempLockOrientation == False):
         orientation = GetMode()
     else:
+        defaultOrientationLock.acquire()
         orientation = defaultOrientation
+        defaultOrientationLock.release()
     # Depending on the orientation, prepare the display layout image
     if (orientation == 0):
         textDraw = Image.new('RGB', (160, 128))
@@ -1121,11 +1280,22 @@ def main():
     # Loop the display and/or printing of variables if desired, waiting between
     # calls for the set or default refresh interval
     while True:
-        if printEnabled:
+        printEnabledLock.acquire()
+        tempPrintEnabled = printEnabled
+        printEnabledLock.release()
+        if tempPrintEnabled:
             PrintValues()
-        if displayEnabled:
+
+        displayEnabledLock.acquire()
+        tempDisplayEnabled = displayEnabled
+        displayEnabledLock.release()
+        if tempDisplayEnabled:
             DisplayValues()
-        time.sleep(sleepTime)
+
+        sleepTimeLock.acquire()
+        tempSleepTime = sleepTime
+        sleepTimeLock.release()
+        time.sleep(tempSleepTime)
 
 
 # Assuming this program is run itself, execute normally
