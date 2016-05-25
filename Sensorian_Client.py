@@ -482,6 +482,7 @@ def UpdateButton():
 
 # Update the button pressed when interrupted
 def ButtonEventHandler(pin):
+    GPIO.output(LED_PIN, True)
     global button
     I2CLock.acquire()
     tempNewButton = CapTouch.readPressedButton()
@@ -489,8 +490,12 @@ def ButtonEventHandler(pin):
     buttonLock.acquire()
     button = tempNewButton
     buttonLock.release()
-    if (tempNewButton != 0):
-        ButtonHandler(tempNewButton)
+    while (tempNewButton == 0):
+        I2CLock.acquire()
+        tempNewButton = CapTouch.readPressedButton()
+        I2CLock.release()
+    ButtonHandler(tempNewButton)
+    GPIO.output(LED_PIN, False)
 
 
 # Get the latest update of the most recent button press
@@ -1045,8 +1050,8 @@ def main():
     requestThread = GeneralThread(8, "SendThread", postInterval, "SendValues")
     requestThread.start()
 
-
     GPIO.setup(CAP_PIN, GPIO.IN)
+    GPIO.setup(LED_PIN, GPIO.OUT)
     GPIO.add_event_detect(CAP_PIN, GPIO.FALLING)
     GPIO.add_event_callback(CAP_PIN, ButtonEventHandler)
     CapTouch.clearInterrupt()
