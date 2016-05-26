@@ -151,6 +151,7 @@ lockOrientationLock = threading.Lock()
 printEnabledLock = threading.Lock()
 displayEnabledLock = threading.Lock()
 sleepTimeLock = threading.Lock()
+postTimeoutLock = threading.Lock()
 
 
 # Updates the global CPU serial variable
@@ -446,7 +447,9 @@ def UpdateAccelerometer():
         if (mode != modeprevious):
             # Alert change in orientation if required
             # print "Changed orientation"
-            modeprevious = mode
+            modeprevious = GetMode()
+    else:
+        I2CLock.release()
 
 
 # Get the latest update of the orientation from the global when safe
@@ -646,12 +649,18 @@ def ButtonHandler(pressed):
         tempMenuPos = menuPosition
         menuPositionLock.release()
         if (pressed == 1):
-            if (tempMenuPos != 0):
+            if (tempMenuPos == 0):
+                menuPositionLock.acquire()
+                menuPosition = tempLength - 1
+                menuPositionLock.release()
+            elif (tempMenuPos != 0):
                 menuPositionLock.acquire()
                 menuPosition = tempMenuPos - 1
                 menuPositionLock.release()
         elif (pressed == 3):
-            if (tempMenuPos != tempLength - 1):
+            if (tempMenuPos == tempLength - 1):
+                cursorToTop()
+            elif (tempMenuPos != tempLength - 1):
                 menuPositionLock.acquire()
                 menuPosition = tempMenuPos + 1
                 menuPositionLock.release()
@@ -676,6 +685,35 @@ def ButtonHandler(pressed):
                     menuElementsLock.acquire()
                     menuElements = ["Back", "Default Orientation", "Lock Orientation", "Refresh Interval",
                                     "Display Enabled", "Print Enabled"]
+                    menuElementsLock.release()
+                    cursorToTop()
+                # If Requests was selected, go into that sub-menu
+                elif (tempElements[tempMenuPos] == "Requests"):
+                    changeMenu("Requests")
+                    menuElementsLock.acquire()
+                    menuElements = ["Back", "POST Interval", "POST Timeout", "Server URL", "IFTTT Key",
+                                    "IFTTT Event"]
+                    menuElementsLock.release()
+                    cursorToTop()
+                # If Ambient was selected, go into that sub-menu
+                elif (tempElements[tempMenuPos] == "Ambient"):
+                    changeMenu("Ambient")
+                    menuElementsLock.acquire()
+                    menuElements = ["Back", "Ambient Interval"]
+                    menuElementsLock.release()
+                    cursorToTop()
+                # If Light was selected, go into that sub-menu
+                elif (tempElements[tempMenuPos] == "Light"):
+                    changeMenu("Light")
+                    menuElementsLock.acquire()
+                    menuElements = ["Back", "Light Interval"]
+                    menuElementsLock.release()
+                    cursorToTop()
+                # If Accelerometer was selected, go into that sub-menu
+                elif (tempElements[tempMenuPos] == "Accelerometer"):
+                    changeMenu("Accelerometer")
+                    menuElementsLock.acquire()
+                    menuElements = ["Back", "Accel Interval"]
                     menuElementsLock.release()
                     cursorToTop()
             # If we are in the general sub-menu already, which one of these options was selected
@@ -843,6 +881,110 @@ def ButtonHandler(pressed):
                 printEnabled = newPrintEnabled
                 printEnabledLock.release()
                 closeMenu()
+            # If we are in the Requests sub-menu already, which one of these options was selected
+            elif (tempMenu == "Requests"):
+                # If Back was selected, return to the Top menu
+                if (tempElements[tempMenuPos] == "Back"):
+                    changeMenu("Top")
+                    menuElementsLock.acquire()
+                    menuElements = ["Exit", "General", "UI", "Requests", "Accelerometer", "Light", "Ambient"]
+                    menuElementsLock.release()
+                    cursorToTop()
+                # If POST Interval was selected, go into that sub-menu
+                elif (tempElements[tempMenuPos] == "POST Interval"):
+                    changeMenu("POST Interval")
+                    # Prepare a list of possible quick options for the orientation
+                    menuElementsLock.acquire()
+                    menuElements = [1, 2, 3, 4, 5, 10, 15, 20, 30, 60]
+                    menuElementsLock.release()
+                    cursorToTop()
+                # If POST Timeout was selected, go into that sub-menu
+                elif (tempElements[tempMenuPos] == "POST Timeout"):
+                    changeMenu("POST Interval")
+                    # Prepare a list of possible quick options for the orientation
+                    menuElementsLock.acquire()
+                    menuElements = [1, 2, 3, 4, 5, 10, 15, 20, 30, 60]
+                    menuElementsLock.release()
+                    cursorToTop()
+            elif (tempMenu == "POST Interval"):
+                newPostInterval = tempElements[tempMenuPos]
+                parser.set('Requests', 'postinterval', str(newPostInterval))
+                rebootThread("SendThread", newPostInterval, "SendValues")
+                closeMenu()
+            elif (tempMenu == "POST Timeout"):
+                global postTimeout
+                newPostTimeout = tempElements[tempMenuPos]
+                parser.set('Requests', 'posttimeout', str(newPostTimeout))
+                postTimeoutLock.acquire()
+                postTimeout = newPostTimeout
+                postTimeoutLock.release()
+                closeMenu()
+            # If we are in the Ambient sub-menu already, which one of these options was selected
+            elif (tempMenu == "Ambient"):
+                # If Back was selected, return to the Top menu
+                if (tempElements[tempMenuPos] == "Back"):
+                    changeMenu("Top")
+                    menuElementsLock.acquire()
+                    menuElements = ["Exit", "General", "UI", "Requests", "Accelerometer", "Light", "Ambient"]
+                    menuElementsLock.release()
+                    cursorToTop()
+                # If Ambient Interval was selected, go into that sub-menu
+                elif (tempElements[tempMenuPos] == "Ambient Interval"):
+                    changeMenu("Ambient Interval")
+                    # Prepare a list of possible quick options for the orientation
+                    menuElementsLock.acquire()
+                    menuElements = [1, 2, 3, 4, 5, 10, 15, 20, 30, 60]
+                    menuElementsLock.release()
+                    cursorToTop()
+            elif (tempMenu == "Ambient Interval"):
+                newAmbientInterval = tempElements[tempMenuPos]
+                parser.set('Ambient', 'ambientinterval', str(newAmbientInterval))
+                rebootThread("AmbientThread", newAmbientInterval, "UpdateAmbient")
+                closeMenu()
+            # If we are in the Light sub-menu already, which one of these options was selected
+            elif (tempMenu == "Light"):
+                # If Back was selected, return to the Top menu
+                if (tempElements[tempMenuPos] == "Back"):
+                    changeMenu("Top")
+                    menuElementsLock.acquire()
+                    menuElements = ["Exit", "General", "UI", "Requests", "Accelerometer", "Light", "Ambient"]
+                    menuElementsLock.release()
+                    cursorToTop()
+                # If Light Interval was selected, go into that sub-menu
+                elif (tempElements[tempMenuPos] == "Light Interval"):
+                    changeMenu("Light Interval")
+                    # Prepare a list of possible quick options for the orientation
+                    menuElementsLock.acquire()
+                    menuElements = [1, 2, 3, 4, 5, 10, 15, 20, 30, 60]
+                    menuElementsLock.release()
+                    cursorToTop()
+            elif (tempMenu == "Light Interval"):
+                newLightInterval = tempElements[tempMenuPos]
+                parser.set('Light', 'lightinterval', str(newLightInterval))
+                rebootThread("LightThread", newLightInterval, "UpdateLight")
+                closeMenu()
+            # If we are in the Accelerometer sub-menu already, which one of these options was selected
+            elif (tempMenu == "Accelerometer"):
+                # If Back was selected, return to the Top menu
+                if (tempElements[tempMenuPos] == "Back"):
+                    changeMenu("Top")
+                    menuElementsLock.acquire()
+                    menuElements = ["Exit", "General", "UI", "Requests", "Accelerometer", "Light", "Ambient"]
+                    menuElementsLock.release()
+                    cursorToTop()
+                # If Ambient Interval was selected, go into that sub-menu
+                elif (tempElements[tempMenuPos] == "Accel Interval"):
+                    changeMenu("Accel Interval")
+                    # Prepare a list of possible quick options for the orientation
+                    menuElementsLock.acquire()
+                    menuElements = [1, 2, 3, 4, 5, 10, 15, 20, 30, 60]
+                    menuElementsLock.release()
+                    cursorToTop()
+            elif (tempMenu == "Accel Interval"):
+                newAccelInterval = tempElements[tempMenuPos]
+                parser.set('Accelerometer', 'accelinterval', str(newAccelInterval))
+                rebootThread("AccelThread", newAccelInterval, "UpdateAccelerometer")
+                closeMenu()
 
 
 # Changes the menu to the passed value
@@ -870,6 +1012,7 @@ def cursorToTop():
 
 
 def rebootThread(threadName, threadInterval, sentinelName):
+    global threads
     if (CheckSentinel(sentinelName) == True):
         SetSentinel(sentinelName, False)
         for t in threads:
@@ -889,7 +1032,10 @@ def DisplayValues():
     lockOrientationLock.acquire()
     tempLockOrientation = lockOrientation
     lockOrientationLock.release()
-    if (tempLockOrientation == False):
+    accelEnabledLock.acquire()
+    tempAccelEnabled = accelEnabled
+    accelEnabledLock.release()
+    if (tempLockOrientation == False and tempAccelEnabled == True):
         orientation = GetMode()
     else:
         defaultOrientationLock.acquire()
@@ -941,7 +1087,7 @@ def DisplayValues():
         menuElementsLock.acquire()
         tempElements = menuElements
         menuElementsLock.release()
-        for x in range(0,9):
+        for x in range(0,10):
             try:
                 textDraw2.text((18, x*12), str(tempElements[x]), font=font)
             except IndexError:
@@ -1003,8 +1149,11 @@ def SendValues():
                'Z': str(GetAccelZ() / 1000.0)
                }
     # Attempt to POST the JSON to the given URL, catching any failures
+    postTimeoutLock.acquire()
+    tempTimeout = postTimeout
+    postTimeoutLock.release()
     try:
-        r = requests.post(serverURL, data=json.dumps(payload), timeout=postTimeout)
+        r = requests.post(serverURL, data=json.dumps(payload), timeout=tempTimeout)
         # print r.text #For debugging POST requests
     except:
         print "POST ERROR - Check connection and server"
@@ -1255,9 +1404,6 @@ def main():
 
     # Create threads and start them to monitor the various sensors and
     # IP variables at their given intervals, 1 second interval for time/buttons
-    global threads
-
-    # Fire up all the threads
     rebootThread("TimeThread", 1, "UpdateDateTime")
     rebootThread("AmbientThread", ambientInterval, "UpdateAmbient")
     rebootThread("LightThread", lightInterval, "UpdateLight")
