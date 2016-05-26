@@ -129,7 +129,7 @@ class CAP1203(object):
 		status = CAP.CAP1203_Read(GEN_STATUS);
 		return status;
 
-	def  enableInterrupt(self,pin):
+	def  enableInterrupt(self,repeat,release,pin):
 		"""
 		Enable the interrupt mode.
 		
@@ -137,7 +137,7 @@ class CAP1203(object):
 		:param pin: Enables interrupt on the specific pin
 		:returns: none
 		"""
-		CAP.CAP1203_EnableInterrupt(pin)
+		CAP.CAP1203_EnableInterrupt(repeat, release, pin)
 
 		
 	def  setSensitivity(self,sensitivity):

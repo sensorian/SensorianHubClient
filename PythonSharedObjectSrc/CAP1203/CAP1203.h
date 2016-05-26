@@ -216,7 +216,7 @@ unsigned char   CAP1203_DeepSleep(void);
 unsigned char   CAP1203_ResumeFromDeepSleep(void);
 
 unsigned char   CAP1203_ReadPressedButton(void);
-void            CAP1203_EnableInterrupt(button_type pin);
+void            CAP1203_EnableInterrupt(int repeat, int release, button_type pin);
 void            CAP1203_SetSensitivity(sensitivity_type sensitivity);
 unsigned char   CAP1203_CheckSensorStatus(void);
 unsigned char   CAP1203_ClearInterrupt(void);
