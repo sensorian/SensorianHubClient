@@ -99,9 +99,11 @@ accelInterval = 1
 inMenu = False
 currentMenu = "Top"
 menuElements = []
+topMenuElements = ["Exit", "General", "UI", "Requests", "Accelerometer", "Light", "Ambient", "System"]
 menuPosition = 0
 parser = ConfigParser.SafeConfigParser()
 threads = []
+killWatch = False
 
 # Board Pin Numbers
 INT_PIN = 11    # Ambient Light Sensor Interrupt - BCM 17
@@ -152,6 +154,7 @@ printEnabledLock = threading.Lock()
 displayEnabledLock = threading.Lock()
 sleepTimeLock = threading.Lock()
 postTimeoutLock = threading.Lock()
+killWatchLock = threading.Lock()
 
 
 # Updates the global CPU serial variable
@@ -633,7 +636,7 @@ def ButtonHandler(pressed):
             inMenuLock.release()
             changeMenu("Top")
             menuElementsLock.acquire()
-            menuElements = ["Exit", "General", "UI", "Requests", "Accelerometer", "Light", "Ambient"]
+            menuElements = topMenuElements
             menuElementsLock.release()
             cursorToTop()
     else:
@@ -716,13 +719,20 @@ def ButtonHandler(pressed):
                     menuElements = ["Back", "Accel Interval"]
                     menuElementsLock.release()
                     cursorToTop()
+                # If System was selected, go into that sub-menu
+                elif (tempElements[tempMenuPos] == "System"):
+                    changeMenu("System")
+                    menuElementsLock.acquire()
+                    menuElements = ["Back", "Shutdown", "Reboot", "Kill Program"]
+                    menuElementsLock.release()
+                    cursorToTop()
             # If we are in the general sub-menu already, which one of these options was selected
             elif (tempMenu == "General"):
                 # If Back was selected, return to the Top menu
                 if (tempElements[tempMenuPos] == "Back"):
                     changeMenu("Top")
                     menuElementsLock.acquire()
-                    menuElements = ["Exit", "General", "UI", "Requests", "Accelerometer", "Light", "Ambient"]
+                    menuElements = topMenuElements
                     menuElementsLock.release()
                     cursorToTop()
                 # If Watched Interface was selected, go into that sub-menu
@@ -795,7 +805,7 @@ def ButtonHandler(pressed):
                 if (tempElements[tempMenuPos] == "Back"):
                     changeMenu("Top")
                     menuElementsLock.acquire()
-                    menuElements = ["Exit", "General", "UI", "Requests", "Accelerometer", "Light", "Ambient"]
+                    menuElements = topMenuElements
                     menuElementsLock.release()
                     cursorToTop()
                 # If Default Orientation was selected, go into that sub-menu
@@ -887,7 +897,7 @@ def ButtonHandler(pressed):
                 if (tempElements[tempMenuPos] == "Back"):
                     changeMenu("Top")
                     menuElementsLock.acquire()
-                    menuElements = ["Exit", "General", "UI", "Requests", "Accelerometer", "Light", "Ambient"]
+                    menuElements = topMenuElements
                     menuElementsLock.release()
                     cursorToTop()
                 # If POST Interval was selected, go into that sub-menu
@@ -925,7 +935,7 @@ def ButtonHandler(pressed):
                 if (tempElements[tempMenuPos] == "Back"):
                     changeMenu("Top")
                     menuElementsLock.acquire()
-                    menuElements = ["Exit", "General", "UI", "Requests", "Accelerometer", "Light", "Ambient"]
+                    menuElements = topMenuElements
                     menuElementsLock.release()
                     cursorToTop()
                 # If Ambient Interval was selected, go into that sub-menu
@@ -947,7 +957,7 @@ def ButtonHandler(pressed):
                 if (tempElements[tempMenuPos] == "Back"):
                     changeMenu("Top")
                     menuElementsLock.acquire()
-                    menuElements = ["Exit", "General", "UI", "Requests", "Accelerometer", "Light", "Ambient"]
+                    menuElements = topMenuElements
                     menuElementsLock.release()
                     cursorToTop()
                 # If Light Interval was selected, go into that sub-menu
@@ -969,7 +979,7 @@ def ButtonHandler(pressed):
                 if (tempElements[tempMenuPos] == "Back"):
                     changeMenu("Top")
                     menuElementsLock.acquire()
-                    menuElements = ["Exit", "General", "UI", "Requests", "Accelerometer", "Light", "Ambient"]
+                    menuElements = topMenuElements
                     menuElementsLock.release()
                     cursorToTop()
                 # If Ambient Interval was selected, go into that sub-menu
@@ -985,6 +995,29 @@ def ButtonHandler(pressed):
                 parser.set('Accelerometer', 'accelinterval', str(newAccelInterval))
                 rebootThread("AccelThread", newAccelInterval, "UpdateAccelerometer")
                 closeMenu()
+            # If we are in the System sub-menu already, which one of these options was selected
+            elif (tempMenu == "System"):
+                # If Back was selected, return to the Top menu
+                if (tempElements[tempMenuPos] == "Back"):
+                    changeMenu("Top")
+                    menuElementsLock.acquire()
+                    menuElements = topMenuElements
+                    menuElementsLock.release()
+                    cursorToTop()
+                # If Shutdown was selected, shutdown the Raspberry Pi
+                elif (tempElements[tempMenuPos] == "Shutdown"):
+                    proc = subprocess.Popen(["shutdown", "-h", "now"], stdout=subprocess.PIPE)
+                    proc.communicate()
+                # If Reboot was selected, reboot the Raspberry Pi
+                elif (tempElements[tempMenuPos] == "Reboot"):
+                    proc = subprocess.Popen(["reboot"], stdout=subprocess.PIPE)
+                    proc.communicate()
+                # If Kill Program was selected, terminate the program
+                elif (tempElements[tempMenuPos] == "Kill Program"):
+                    global killWatch
+                    killWatchLock.acquire()
+                    killWatch = True
+                    killWatchLock.release()
 
 
 # Changes the menu to the passed value
@@ -1423,9 +1456,13 @@ def main():
     CapTouch.clearInterrupt()
     CapTouch.enableInterrupt(0, 0, 0x07)
 
+    killWatchLock.acquire()
+    tempKillWatch = killWatch
+    killWatchLock.release()
+
     # Loop the display and/or printing of variables if desired, waiting between
     # calls for the set or default refresh interval
-    while True:
+    while tempKillWatch == False:
         printEnabledLock.acquire()
         tempPrintEnabled = printEnabled
         printEnabledLock.release()
@@ -1442,6 +1479,10 @@ def main():
         tempSleepTime = sleepTime
         sleepTimeLock.release()
         time.sleep(tempSleepTime)
+
+        killWatchLock.acquire()
+        tempKillWatch = killWatch
+        killWatchLock.release()
 
 
 # Assuming this program is run itself, execute normally
