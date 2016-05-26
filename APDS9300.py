@@ -48,7 +48,6 @@ INTEG402MS        = 0x02
 INTERR_THRSHOLD   = 0x01
 INTERR_DIS        = 0x00
 INTERR_EN         = 0x10
-INTERR_ME		  = 0x12
 
 class APDS9300(object):
 	""" 
@@ -171,10 +170,7 @@ class APDS9300(object):
 		:param highvalue: High interrupt threshold value 
 		:returns: none
 		"""
-		INTR_HIGH = 0x0200
-		self.writeWord((THRESHHIGHLOW| COMMAND | CMD_WORD),INTR_HIGH)
-		print self.readByte(THRESHHIGHLOW)
-		print self.readByte(THRESHHIGHHIGH)
+		self.writeWord((THRESHHIGHLOW| COMMAND | CMD_WORD),highvalue)
 
 	def clearInterrupt(self):
 		"""
@@ -195,7 +191,7 @@ class APDS9300(object):
 		:returns: none 
 		"""
 		if enable == True:
-			self.writeRegister(COMMAND|INTERRUPT,INTERR_ME)
+			self.writeRegister(COMMAND|INTERRUPT,INTERR_EN)
 		else:
 			self.writeRegister(COMMAND|INTERRUPT,INTERR_DIS)
 
