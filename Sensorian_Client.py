@@ -1,4 +1,5 @@
 #!/usr/bin/python
+from __future__ import print_function
 import ConfigParser
 import os
 import requests
@@ -215,7 +216,7 @@ class GeneralThread(threading.Thread):
                 self.repeat = CheckSentinel(self.method)
                 # If the sentinel changed to false this second, kill the thread
                 if (self.repeat == False):
-                    print "Killing " + self.name
+                    print("Killing " + self.name)
                     break
                 # If it did not, sleep for another second unless less than a
                 # second needs to pass to reach the end of the current loop
@@ -240,7 +241,7 @@ def UpdateLight():
         channel2 = AmbientLight.readChannel(0)
         tempLight = AmbientLight.getLuxLevel(channel1, channel2)
     except:
-        print "EXCEPTION IN LIGHT UPDATE"
+        print("EXCEPTION IN LIGHT UPDATE")
     I2CLock.release()
     # Update the global light level when safe
     lightLock.acquire()
@@ -303,7 +304,7 @@ def UpdateAmbient():
         ambientPressure = press
         ambientPressureLock.release()
     else:
-        print "NoPressureNeeded"
+        print("NoPressureNeeded")
     # Getting altitude as well would result in additional sleeps
     # for the sensor, may calculate from location/pressure/temp
     '''
@@ -489,7 +490,7 @@ def GetAccelZ():
 
 # Update the latest button press to the global variable
 def UpdateButton():
-    print "You Shouldn't Be Here..."
+    print("You Shouldn't Be Here...")
 
 
 # Update the button pressed when interrupted
@@ -629,7 +630,7 @@ def ButtonHandler(pressed):
     tempInMenu = inMenu
     inMenuLock.release()
     if (tempInMenu == False):
-        print "Display Pressed " + str(pressed)
+        print("Display Pressed " + str(pressed))
         if (pressed == 2):
             inMenuLock.acquire()
             inMenu = True
@@ -640,7 +641,7 @@ def ButtonHandler(pressed):
             menuElementsLock.release()
             cursorToTop()
     else:
-        print "Menu Pressed " + str(pressed)
+        print("Menu Pressed " + str(pressed))
         currentMenuLock.acquire()
         tempMenu = currentMenu
         currentMenuLock.release()
@@ -1245,20 +1246,20 @@ def PrintValues():
     # Get the current date and time and the latest update of all the watched
     # variables and print them to the console
     rtcTime = GetDateTime()
-    print "HW: " + GetSerial()
-    print "Date: " + str(rtcTime.date) + "/" + str(rtcTime.month) + "/" + str(
-        rtcTime.year)  # convert to string and print it
-    print "Time: " + '{:02d}'.format(rtcTime.hour) + ":" + '{:02d}'.format(rtcTime.min) + ":" + '{:02d}'.format(
-        rtcTime.sec)
-    print "Light: " + str(GetLight()) + " lx"
-    print "Temp: " + str(GetAmbientTemp()) + " C"
-    print "Pressure: " + str(GetAmbientPressure()) + " kPa"
-    print "CPU Temp: " + str(GetCPUTemp()) + " C"
-    print "LAN IP: " + str(GetWatchedInterfaceIP())
-    print "WAN IP: " + GetPublicIP()
-    print "Mode: " + options[GetMode()]
-    print "Button Pressed: " + str(GetButton())
-    print "--------------------"
+    print("HW: " + GetSerial())
+    print("Date: " + str(rtcTime.date) + "/" + str(rtcTime.month) + "/" + str(
+        rtcTime.year))  # convert to string and print it
+    print("Time: " + '{:02d}'.format(rtcTime.hour) + ":" + '{:02d}'.format(rtcTime.min) + ":" + '{:02d}'.format(
+        rtcTime.sec))
+    print("Light: " + str(GetLight()) + " lx")
+    print("Temp: " + str(GetAmbientTemp()) + " C")
+    print("Pressure: " + str(GetAmbientPressure()) + " kPa")
+    print("CPU Temp: " + str(GetCPUTemp()) + " C")
+    print("LAN IP: " + str(GetWatchedInterfaceIP()))
+    print("WAN IP: " + GetPublicIP())
+    print("Mode: " + options[GetMode()])
+    print("Button Pressed: " + str(GetButton()))
+    print("--------------------")
 
 
 # POST the variables in JSON format to the URL specified in the config file
@@ -1287,7 +1288,7 @@ def SendValues():
         r = requests.post(serverURL, data=json.dumps(payload), timeout=tempTimeout)
         # print r.text #For debugging POST requests
     except:
-        print "POST ERROR - Check connection and server"
+        print("POST ERROR - Check connection and server")
 
 
 # Method names for the threads to call to update their variables
@@ -1305,8 +1306,8 @@ methods = {"UpdateDateTime": UpdateDateTime,
 
 # Method to read the config file or set defaults if parameters missing
 def Config():
-    print "-------------------------"
-    print "Configuring Settings"
+    print("-------------------------")
+    print("Configuring Settings")
     global parser
     parser = ConfigParser.SafeConfigParser()
     # Read the config file if present
@@ -1325,7 +1326,7 @@ def Config():
             parser.add_section('UI')
             parser.set('UI', 'defaultorientation', str(defaultOrientation))
     finally:
-        print "Default Orientation: " + str(defaultOrientation)
+        print("Default Orientation: " + str(defaultOrientation))
 
     global lockOrientation
     try:
@@ -1337,7 +1338,7 @@ def Config():
             parser.add_section('UI')
             parser.set('UI', 'lockorientation', str(lockOrientation))
     finally:
-        print "Lock Orientation: " + str(lockOrientation)
+        print("Lock Orientation: " + str(lockOrientation))
 
     global sleepTime
     try:
@@ -1349,7 +1350,7 @@ def Config():
             parser.add_section('UI')
             parser.set('UI', 'refreshinterval', str(sleepTime))
     finally:
-        print "Refresh Interval: " + str(sleepTime)
+        print("Refresh Interval: " + str(sleepTime))
 
     global watchedInterface
     try:
@@ -1361,7 +1362,7 @@ def Config():
             parser.add_section('General')
             parser.set('General', 'watchedinterface', watchedInterface)
     finally:
-        print "Watched Interface: " + watchedInterface
+        print("Watched Interface: " + watchedInterface)
 
     global sendEnabled
     try:
@@ -1373,7 +1374,7 @@ def Config():
             parser.add_section('Requests')
             parser.set('Requests', 'sendenabled', str(sendEnabled))
     finally:
-        print "Send Enabled: " + str(sendEnabled)
+        print("Send Enabled: " + str(sendEnabled))
 
     global postInterval
     try:
@@ -1385,7 +1386,7 @@ def Config():
             parser.add_section('Requests')
             parser.set('Requests', 'postinterval', str(postInterval))
     finally:
-        print "POST Interval: " + str(postInterval)
+        print("POST Interval: " + str(postInterval))
 
     global postTimeout
     try:
@@ -1397,7 +1398,7 @@ def Config():
             parser.add_section('Requests')
             parser.set('Requests', 'posttimeout', str(postTimeout))
     finally:
-        print "POST Timeout: " + str(postTimeout)
+        print("POST Timeout: " + str(postTimeout))
 
     global ambientEnabled
     try:
@@ -1409,7 +1410,7 @@ def Config():
             parser.add_section('Ambient')
             parser.set('Ambient', 'ambientenabled', str(ambientEnabled))
     finally:
-        print "Ambient Enabled: " + str(ambientEnabled)
+        print("Ambient Enabled: " + str(ambientEnabled))
 
     global ambientInterval
     try:
@@ -1421,7 +1422,7 @@ def Config():
             parser.add_section('Ambient')
             parser.set('Ambient', 'ambientinterval', str(ambientInterval))
     finally:
-        print "Ambient Interval: " + str(ambientInterval)
+        print("Ambient Interval: " + str(ambientInterval))
 
     global lightEnabled
     try:
@@ -1433,7 +1434,7 @@ def Config():
             parser.add_section('Light')
             parser.set('Light', 'lightenabled', str(lightEnabled))
     finally:
-        print "Light Enabled: " + str(lightEnabled)
+        print("Light Enabled: " + str(lightEnabled))
 
     global lightInterval
     try:
@@ -1445,7 +1446,7 @@ def Config():
             parser.add_section('Light')
             parser.set('Light', 'lightinterval', str(lightInterval))
     finally:
-        print "Light Interval: " + str(lightInterval)
+        print("Light Interval: " + str(lightInterval))
 
     global cpuTempInterval
     try:
@@ -1457,7 +1458,7 @@ def Config():
             parser.add_section('General')
             parser.set('General', 'cputempinterval', str(cpuTempInterval))
     finally:
-        print "CPU Temp Interval: " + str(cpuTempInterval)
+        print("CPU Temp Interval: " + str(cpuTempInterval))
 
     global interfaceInterval
     try:
@@ -1469,7 +1470,7 @@ def Config():
             parser.add_section('General')
             parser.set('General', 'interfaceinterval', str(interfaceInterval))
     finally:
-        print "Local IP Interval: " + str(interfaceInterval)
+        print("Local IP Interval: " + str(interfaceInterval))
 
     global publicInterval
     try:
@@ -1481,7 +1482,7 @@ def Config():
             parser.add_section('General')
             parser.set('General', 'publicinterval', str(publicInterval))
     finally:
-        print "Public IP Interval: " + str(publicInterval)
+        print("Public IP Interval: " + str(publicInterval))
 
     global accelEnabled
     try:
@@ -1493,7 +1494,7 @@ def Config():
             parser.add_section('Accelerometer')
             parser.set('Accelerometer', 'accelenabled', str(accelEnabled))
     finally:
-        print "Accel Enabled: " + str(accelEnabled)
+        print("Accel Enabled: " + str(accelEnabled))
 
     global accelInterval
     try:
@@ -1505,7 +1506,7 @@ def Config():
             parser.add_section('Accelerometer')
             parser.set('Accelerometer', 'accelinterval', str(accelInterval))
     finally:
-        print "Accelerometer Interval: " + str(accelInterval)
+        print("Accelerometer Interval: " + str(accelInterval))
 
     global displayEnabled
     try:
@@ -1517,7 +1518,7 @@ def Config():
             parser.add_section('UI')
             parser.set('UI', 'displayenabled', str(displayEnabled))
     finally:
-        print "Display Enabled: " + str(displayEnabled)
+        print("Display Enabled: " + str(displayEnabled))
 
     global printEnabled
     try:
@@ -1529,7 +1530,7 @@ def Config():
             parser.add_section('UI')
             parser.set('UI', 'printenabled', str(printEnabled))
     finally:
-        print "Print Enabled: " + str(printEnabled)
+        print("Print Enabled: " + str(printEnabled))
 
     global serverURL
     try:
@@ -1541,7 +1542,7 @@ def Config():
             parser.add_section('Requests')
             parser.set('Requests', 'serverurl', serverURL)
     finally:
-        print "Server URL: " + serverURL
+        print("Server URL: " + serverURL)
 
     global iftttKey
     try:
@@ -1553,7 +1554,7 @@ def Config():
             parser.add_section('Requests')
             parser.set('Requests', 'iftttkey', iftttKey)
     finally:
-        print "IFTTT Key: " + iftttKey
+        print("IFTTT Key: " + iftttKey)
 
     global iftttEvent
     try:
@@ -1565,13 +1566,13 @@ def Config():
             parser.add_section('Requests')
             parser.set('Requests', 'iftttevent', iftttEvent)
     finally:
-        print "IFTTT Event: " + iftttEvent
+        print("IFTTT Event: " + iftttEvent)
 
     # Write the config file back to disk with the given values and
     # filling in any blanks with the defaults
     writeConfig()
 
-    print "-------------------------"
+    print("-------------------------")
 
 
 # Writes any changes to the config file back to disk whenever changes are made
