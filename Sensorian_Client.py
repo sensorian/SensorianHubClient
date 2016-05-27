@@ -26,6 +26,9 @@ import fcntl
 import struct
 import subprocess
 import RPi.GPIO as GPIO
+from flask import Flask
+from flask import request
+from multiprocessing import Process
 
 # Sensor initializations
 
@@ -70,6 +73,7 @@ accelEnabled = True
 pressureEnabled = True
 buttonEnabled = True
 sendEnabled = True
+flaskEnabled = True
 
 # Global sensor/IP variables protected by locks below if required
 currentDateTime = RTC.GetTime()
@@ -162,6 +166,24 @@ displayEnabledLock = threading.Lock()
 sleepTimeLock = threading.Lock()
 postTimeoutLock = threading.Lock()
 killWatchLock = threading.Lock()
+
+app = Flask(__name__)
+
+@app.route('/data', methods=['GET', 'POST'])
+def data():
+    if request.method == 'POST':
+        print("ValueA is: " + request.form['ValueA'])
+        print("ValueB is: " + request.form['ValueB'])
+        return "Data received!"
+    else:
+        return "Send data here!"
+
+def run_flask():
+    print("Running Flask")
+    app.run(host='0.0.0.0')
+
+
+server = Process(target=run_flask)
 
 
 # Updates the global CPU serial variable
@@ -1603,6 +1625,10 @@ def main():
     rebootThread("AccelThread", accelInterval, "UpdateAccelerometer")
     rebootThread("SendThread", postInterval, "SendValues")
 
+    if flaskEnabled:
+        print("Starting Flask")
+        server.start()
+
     # Set up the GPIO for the touch buttons and LED
     GPIO.setup(CAP_PIN, GPIO.IN)
     GPIO.setup(LED_PIN, GPIO.OUT)
@@ -1693,3 +1719,8 @@ if __name__ == "__main__":
         sendEnabledLock.acquire()
         sendEnabled = False
         sendEnabledLock.release()
+
+        print("Killing Flask")
+        server.terminate()
+        server.join()
+        print("Killed Flask")
