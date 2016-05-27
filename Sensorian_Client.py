@@ -1,6 +1,12 @@
 #!/usr/bin/python
 from __future__ import print_function
-import ConfigParser
+from __future__ import division
+from future import standard_library
+standard_library.install_aliases()
+from builtins import str
+from builtins import range
+from past.utils import old_div
+import configparser
 import os
 import requests
 import json
@@ -102,7 +108,7 @@ currentMenu = "Top"
 menuElements = []
 topMenuElements = ["Exit", "General", "UI", "Requests", "Accelerometer", "Light", "Ambient", "System"]
 menuPosition = 0
-parser = ConfigParser.SafeConfigParser()
+parser = configparser.SafeConfigParser()
 threads = []
 killWatch = False
 
@@ -272,7 +278,7 @@ def GetAmbientTemp():
 # Get the most recent update of the ambient pressure when safe
 def GetAmbientPressure():
     ambientPressureLock.acquire()
-    returnPress = float(ambientPressure) / 1000
+    returnPress = old_div(float(ambientPressure), 1000)
     ambientPressureLock.release()
     return returnPress
 
@@ -350,7 +356,7 @@ def UpdateCPUTemp():
     tFile = open(tPath)
     cpu = tFile.read()
     tFile.close()
-    temp = (float(cpu) / 1000)
+    temp = (old_div(float(cpu), 1000))
     # Update the global variable when safe
     cpuTempLock.acquire()
     cpuTemp = temp
@@ -1276,9 +1282,9 @@ def SendValues():
                'LUX': str(GetLight()),
                'Temp': str(GetAmbientTemp()),
                'Press': str(GetAmbientPressure()),
-               'X': str(GetAccelX() / 1000.0),
-               'Y': str(GetAccelY() / 1000.0),
-               'Z': str(GetAccelZ() / 1000.0)
+               'X': str(old_div(GetAccelX(), 1000.0)),
+               'Y': str(old_div(GetAccelY(), 1000.0)),
+               'Z': str(old_div(GetAccelZ(), 1000.0))
                }
     # Attempt to POST the JSON to the given URL, catching any failures
     postTimeoutLock.acquire()
@@ -1309,7 +1315,7 @@ def Config():
     print("-------------------------")
     print("Configuring Settings")
     global parser
-    parser = ConfigParser.SafeConfigParser()
+    parser = configparser.SafeConfigParser()
     # Read the config file if present
     parser.read('client.cfg')
 
@@ -1319,10 +1325,10 @@ def Config():
     global defaultOrientation
     try:
         defaultOrientation = parser.getint('UI', 'defaultorientation')
-    except (ConfigParser.NoSectionError, ConfigParser.NoOptionError, ValueError):
+    except (configparser.NoSectionError, configparser.NoOptionError, ValueError):
         try:
             parser.set('UI', 'defaultorientation', str(defaultOrientation))
-        except(ConfigParser.NoSectionError):
+        except(configparser.NoSectionError):
             parser.add_section('UI')
             parser.set('UI', 'defaultorientation', str(defaultOrientation))
     finally:
@@ -1331,10 +1337,10 @@ def Config():
     global lockOrientation
     try:
         lockOrientation = parser.getboolean('UI', 'lockorientation')
-    except (ConfigParser.NoSectionError, ConfigParser.NoOptionError, ValueError):
+    except (configparser.NoSectionError, configparser.NoOptionError, ValueError):
         try:
             parser.set('UI', 'lockorientation', str(lockOrientation))
-        except(ConfigParser.NoSectionError):
+        except(configparser.NoSectionError):
             parser.add_section('UI')
             parser.set('UI', 'lockorientation', str(lockOrientation))
     finally:
@@ -1343,10 +1349,10 @@ def Config():
     global sleepTime
     try:
         sleepTime = parser.getfloat('UI', 'refreshinterval')
-    except (ConfigParser.NoSectionError, ConfigParser.NoOptionError, ValueError):
+    except (configparser.NoSectionError, configparser.NoOptionError, ValueError):
         try:
             parser.set('UI', 'refreshinterval', str(sleepTime))
-        except(ConfigParser.NoSectionError):
+        except(configparser.NoSectionError):
             parser.add_section('UI')
             parser.set('UI', 'refreshinterval', str(sleepTime))
     finally:
@@ -1355,10 +1361,10 @@ def Config():
     global watchedInterface
     try:
         watchedInterface = parser.get('General', 'watchedinterface')
-    except (ConfigParser.NoSectionError, ConfigParser.NoOptionError, ValueError):
+    except (configparser.NoSectionError, configparser.NoOptionError, ValueError):
         try:
             parser.set('General', 'watchedinterface', watchedInterface)
-        except(ConfigParser.NoSectionError):
+        except(configparser.NoSectionError):
             parser.add_section('General')
             parser.set('General', 'watchedinterface', watchedInterface)
     finally:
@@ -1367,10 +1373,10 @@ def Config():
     global sendEnabled
     try:
         sendEnabled = parser.getboolean('Requests', 'sendenabled')
-    except (ConfigParser.NoSectionError, ConfigParser.NoOptionError, ValueError):
+    except (configparser.NoSectionError, configparser.NoOptionError, ValueError):
         try:
             parser.set('Requests', 'sendenabled', str(sendEnabled))
-        except(ConfigParser.NoSectionError):
+        except(configparser.NoSectionError):
             parser.add_section('Requests')
             parser.set('Requests', 'sendenabled', str(sendEnabled))
     finally:
@@ -1379,10 +1385,10 @@ def Config():
     global postInterval
     try:
         postInterval = parser.getfloat('Requests', 'postinterval')
-    except (ConfigParser.NoSectionError, ConfigParser.NoOptionError, ValueError):
+    except (configparser.NoSectionError, configparser.NoOptionError, ValueError):
         try:
             parser.set('Requests', 'postinterval', str(postInterval))
-        except(ConfigParser.NoSectionError):
+        except(configparser.NoSectionError):
             parser.add_section('Requests')
             parser.set('Requests', 'postinterval', str(postInterval))
     finally:
@@ -1391,10 +1397,10 @@ def Config():
     global postTimeout
     try:
         postTimeout = parser.getfloat('Requests', 'posttimeout')
-    except (ConfigParser.NoSectionError, ConfigParser.NoOptionError, ValueError):
+    except (configparser.NoSectionError, configparser.NoOptionError, ValueError):
         try:
             parser.set('Requests', 'posttimeout', str(postTimeout))
-        except(ConfigParser.NoSectionError):
+        except(configparser.NoSectionError):
             parser.add_section('Requests')
             parser.set('Requests', 'posttimeout', str(postTimeout))
     finally:
@@ -1403,10 +1409,10 @@ def Config():
     global ambientEnabled
     try:
         ambientEnabled = parser.getboolean('Ambient', 'ambientenabled')
-    except (ConfigParser.NoSectionError, ConfigParser.NoOptionError, ValueError):
+    except (configparser.NoSectionError, configparser.NoOptionError, ValueError):
         try:
             parser.set('Ambient', 'ambientenabled', str(ambientEnabled))
-        except(ConfigParser.NoSectionError):
+        except(configparser.NoSectionError):
             parser.add_section('Ambient')
             parser.set('Ambient', 'ambientenabled', str(ambientEnabled))
     finally:
@@ -1415,10 +1421,10 @@ def Config():
     global ambientInterval
     try:
         ambientInterval = parser.getfloat('Ambient', 'ambientinterval')
-    except (ConfigParser.NoSectionError, ConfigParser.NoOptionError, ValueError):
+    except (configparser.NoSectionError, configparser.NoOptionError, ValueError):
         try:
             parser.set('Ambient', 'ambientinterval', str(ambientInterval))
-        except(ConfigParser.NoSectionError):
+        except(configparser.NoSectionError):
             parser.add_section('Ambient')
             parser.set('Ambient', 'ambientinterval', str(ambientInterval))
     finally:
@@ -1427,10 +1433,10 @@ def Config():
     global lightEnabled
     try:
         lightEnabled = parser.getboolean('Light', 'lightenabled')
-    except (ConfigParser.NoSectionError, ConfigParser.NoOptionError, ValueError):
+    except (configparser.NoSectionError, configparser.NoOptionError, ValueError):
         try:
             parser.set('Light', 'lightenabled', str(lightEnabled))
-        except(ConfigParser.NoSectionError):
+        except(configparser.NoSectionError):
             parser.add_section('Light')
             parser.set('Light', 'lightenabled', str(lightEnabled))
     finally:
@@ -1439,10 +1445,10 @@ def Config():
     global lightInterval
     try:
         lightInterval = parser.getfloat('Light', 'lightinterval')
-    except (ConfigParser.NoSectionError, ConfigParser.NoOptionError, ValueError):
+    except (configparser.NoSectionError, configparser.NoOptionError, ValueError):
         try:
             parser.set('Light', 'lightinterval', str(lightInterval))
-        except(ConfigParser.NoSectionError):
+        except(configparser.NoSectionError):
             parser.add_section('Light')
             parser.set('Light', 'lightinterval', str(lightInterval))
     finally:
@@ -1451,10 +1457,10 @@ def Config():
     global cpuTempInterval
     try:
         cpuTempInterval = parser.getfloat('General', 'cputempinterval')
-    except (ConfigParser.NoSectionError, ConfigParser.NoOptionError, ValueError):
+    except (configparser.NoSectionError, configparser.NoOptionError, ValueError):
         try:
             parser.set('General', 'cputempinterval', str(cpuTempInterval))
-        except(ConfigParser.NoSectionError):
+        except(configparser.NoSectionError):
             parser.add_section('General')
             parser.set('General', 'cputempinterval', str(cpuTempInterval))
     finally:
@@ -1463,10 +1469,10 @@ def Config():
     global interfaceInterval
     try:
         interfaceInterval = parser.getfloat('General', 'interfaceinterval')
-    except (ConfigParser.NoSectionError, ConfigParser.NoOptionError, ValueError):
+    except (configparser.NoSectionError, configparser.NoOptionError, ValueError):
         try:
             parser.set('General', 'interfaceinterval', str(interfaceInterval))
-        except(ConfigParser.NoSectionError):
+        except(configparser.NoSectionError):
             parser.add_section('General')
             parser.set('General', 'interfaceinterval', str(interfaceInterval))
     finally:
@@ -1475,10 +1481,10 @@ def Config():
     global publicInterval
     try:
         publicInterval = parser.getfloat('General', 'publicinterval')
-    except (ConfigParser.NoSectionError, ConfigParser.NoOptionError, ValueError):
+    except (configparser.NoSectionError, configparser.NoOptionError, ValueError):
         try:
             parser.set('General', 'publicinterval', str(publicInterval))
-        except(ConfigParser.NoSectionError):
+        except(configparser.NoSectionError):
             parser.add_section('General')
             parser.set('General', 'publicinterval', str(publicInterval))
     finally:
@@ -1487,10 +1493,10 @@ def Config():
     global accelEnabled
     try:
         accelEnabled = parser.getboolean('Accelerometer', 'accelenabled')
-    except (ConfigParser.NoSectionError, ConfigParser.NoOptionError, ValueError):
+    except (configparser.NoSectionError, configparser.NoOptionError, ValueError):
         try:
             parser.set('Accelerometer', 'accelenabled', str(accelEnabled))
-        except(ConfigParser.NoSectionError):
+        except(configparser.NoSectionError):
             parser.add_section('Accelerometer')
             parser.set('Accelerometer', 'accelenabled', str(accelEnabled))
     finally:
@@ -1499,10 +1505,10 @@ def Config():
     global accelInterval
     try:
         accelInterval = parser.getfloat('Accelerometer', 'accelinterval')
-    except (ConfigParser.NoSectionError, ConfigParser.NoOptionError, ValueError):
+    except (configparser.NoSectionError, configparser.NoOptionError, ValueError):
         try:
             parser.set('Accelerometer', 'accelinterval', str(accelInterval))
-        except(ConfigParser.NoSectionError):
+        except(configparser.NoSectionError):
             parser.add_section('Accelerometer')
             parser.set('Accelerometer', 'accelinterval', str(accelInterval))
     finally:
@@ -1511,10 +1517,10 @@ def Config():
     global displayEnabled
     try:
         displayEnabled = parser.getboolean('UI', 'displayenabled')
-    except (ConfigParser.NoSectionError, ConfigParser.NoOptionError, ValueError):
+    except (configparser.NoSectionError, configparser.NoOptionError, ValueError):
         try:
             parser.set('UI', 'displayenabled', str(displayEnabled))
-        except(ConfigParser.NoSectionError):
+        except(configparser.NoSectionError):
             parser.add_section('UI')
             parser.set('UI', 'displayenabled', str(displayEnabled))
     finally:
@@ -1523,10 +1529,10 @@ def Config():
     global printEnabled
     try:
         printEnabled = parser.getboolean('UI', 'printenabled')
-    except (ConfigParser.NoSectionError, ConfigParser.NoOptionError, ValueError):
+    except (configparser.NoSectionError, configparser.NoOptionError, ValueError):
         try:
             parser.set('UI', 'printenabled', str(printEnabled))
-        except(ConfigParser.NoSectionError):
+        except(configparser.NoSectionError):
             parser.add_section('UI')
             parser.set('UI', 'printenabled', str(printEnabled))
     finally:
@@ -1535,10 +1541,10 @@ def Config():
     global serverURL
     try:
         serverURL = parser.get('Requests', 'serverurl')
-    except (ConfigParser.NoSectionError, ConfigParser.NoOptionError, ValueError):
+    except (configparser.NoSectionError, configparser.NoOptionError, ValueError):
         try:
             parser.set('Requests', 'serverurl', serverURL)
-        except(ConfigParser.NoSectionError):
+        except(configparser.NoSectionError):
             parser.add_section('Requests')
             parser.set('Requests', 'serverurl', serverURL)
     finally:
@@ -1547,10 +1553,10 @@ def Config():
     global iftttKey
     try:
         iftttKey = parser.get('Requests', 'iftttkey')
-    except (ConfigParser.NoSectionError, ConfigParser.NoOptionError, ValueError):
+    except (configparser.NoSectionError, configparser.NoOptionError, ValueError):
         try:
             parser.set('Requests', 'iftttkey', iftttKey)
-        except(ConfigParser.NoSectionError):
+        except(configparser.NoSectionError):
             parser.add_section('Requests')
             parser.set('Requests', 'iftttkey', iftttKey)
     finally:
@@ -1559,10 +1565,10 @@ def Config():
     global iftttEvent
     try:
         iftttEvent = parser.get('Requests', 'iftttevent')
-    except (ConfigParser.NoSectionError, ConfigParser.NoOptionError, ValueError):
+    except (configparser.NoSectionError, configparser.NoOptionError, ValueError):
         try:
             parser.set('Requests', 'iftttevent', iftttEvent)
-        except(ConfigParser.NoSectionError):
+        except(configparser.NoSectionError):
             parser.add_section('Requests')
             parser.set('Requests', 'iftttevent', iftttEvent)
     finally:
