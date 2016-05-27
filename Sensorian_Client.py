@@ -669,6 +669,7 @@ def ButtonHandler(pressed):
                 menuPositionLock.release()
         # If the middle button was pressed, check the menu it was in
         elif (pressed == 2):
+            global postInterval, ambientInterval
             # If it was the top menu, which menu option was selected
             if (tempMenu == "Top"):
                 # If Exit was selected, close the menu
@@ -694,29 +695,29 @@ def ButtonHandler(pressed):
                 elif (tempElements[tempMenuPos] == "Requests"):
                     changeMenu("Requests")
                     menuElementsLock.acquire()
-                    menuElements = ["Back", "POST Interval", "POST Timeout", "Server URL", "IFTTT Key",
-                                    "IFTTT Event"]
+                    menuElements = ["Back", "POST Enabled", "POST Interval", "POST Timeout", "Server URL",
+                                    "IFTTT Key", "IFTTT Event"]
                     menuElementsLock.release()
                     cursorToTop()
                 # If Ambient was selected, go into that sub-menu
                 elif (tempElements[tempMenuPos] == "Ambient"):
                     changeMenu("Ambient")
                     menuElementsLock.acquire()
-                    menuElements = ["Back", "Ambient Interval"]
+                    menuElements = ["Back", "Ambient Enabled", "Ambient Interval"]
                     menuElementsLock.release()
                     cursorToTop()
                 # If Light was selected, go into that sub-menu
                 elif (tempElements[tempMenuPos] == "Light"):
                     changeMenu("Light")
                     menuElementsLock.acquire()
-                    menuElements = ["Back", "Light Interval"]
+                    menuElements = ["Back", "Light Enabled", "Light Interval"]
                     menuElementsLock.release()
                     cursorToTop()
                 # If Accelerometer was selected, go into that sub-menu
                 elif (tempElements[tempMenuPos] == "Accelerometer"):
                     changeMenu("Accelerometer")
                     menuElementsLock.acquire()
-                    menuElements = ["Back", "Accel Interval"]
+                    menuElements = ["Back", "Accel Enabled", "Accel Interval"]
                     menuElementsLock.release()
                     cursorToTop()
                 # If System was selected, go into that sub-menu
@@ -900,6 +901,14 @@ def ButtonHandler(pressed):
                     menuElements = topMenuElements
                     menuElementsLock.release()
                     cursorToTop()
+                # If POST Enabled was selected, go into that sub-menu
+                elif (tempElements[tempMenuPos] == "POST Enabled"):
+                    changeMenu("POST Enabled")
+                    # Can only be True or False
+                    menuElementsLock.acquire()
+                    menuElements = [True, False]
+                    menuElementsLock.release()
+                    cursorToTop()
                 # If POST Interval was selected, go into that sub-menu
                 elif (tempElements[tempMenuPos] == "POST Interval"):
                     changeMenu("POST Interval")
@@ -916,8 +925,23 @@ def ButtonHandler(pressed):
                     menuElements = [1, 2, 3, 4, 5, 10, 15, 20, 30, 60]
                     menuElementsLock.release()
                     cursorToTop()
+            elif (tempMenu == "POST Enabled"):
+                global sendEnabled
+                newSendEnabled = tempElements[tempMenuPos]
+                parser.set('Requests', 'sendenabled', str(newSendEnabled))
+                sendEnabledLock.acquire()
+                if (newSendEnabled != sendEnabled):
+                    sendEnabled = newSendEnabled
+                    sendEnabledLock.release()
+                    if newSendEnabled == True:
+                        rebootThread("SendThread", postInterval, "SendValues")
+                elif (newSendEnabled == sendEnabled):
+                    sendEnabledLock.release()
+                closeMenu()
             elif (tempMenu == "POST Interval"):
+                # global postInterval
                 newPostInterval = tempElements[tempMenuPos]
+                postInterval = newPostInterval
                 parser.set('Requests', 'postinterval', str(newPostInterval))
                 rebootThread("SendThread", newPostInterval, "SendValues")
                 closeMenu()
@@ -938,6 +962,14 @@ def ButtonHandler(pressed):
                     menuElements = topMenuElements
                     menuElementsLock.release()
                     cursorToTop()
+                # If Ambient Enabled was selected, go into that sub-menu
+                elif (tempElements[tempMenuPos] == "Ambient Enabled"):
+                    changeMenu("Ambient Enabled")
+                    # Can only be True or False
+                    menuElementsLock.acquire()
+                    menuElements = [True, False]
+                    menuElementsLock.release()
+                    cursorToTop()
                 # If Ambient Interval was selected, go into that sub-menu
                 elif (tempElements[tempMenuPos] == "Ambient Interval"):
                     changeMenu("Ambient Interval")
@@ -946,8 +978,23 @@ def ButtonHandler(pressed):
                     menuElements = [1, 2, 3, 4, 5, 10, 15, 20, 30, 60]
                     menuElementsLock.release()
                     cursorToTop()
+            elif (tempMenu == "Ambient Enabled"):
+                global ambientEnabled
+                newAmbientEnabled = tempElements[tempMenuPos]
+                parser.set('Ambient', 'ambientenabled', str(newAmbientEnabled))
+                ambientEnabledLock.acquire()
+                if (newAmbientEnabled != ambientEnabled):
+                    ambientEnabled = newAmbientEnabled
+                    ambientEnabledLock.release()
+                    if newAmbientEnabled == True:
+                        rebootThread("AmbientThread", ambientInterval, "UpdateAmbient")
+                elif (newAmbientEnabled == ambientEnabled):
+                    ambientEnabledLock.release()
+                closeMenu()
             elif (tempMenu == "Ambient Interval"):
+                # global ambientInterval
                 newAmbientInterval = tempElements[tempMenuPos]
+                ambientInterval = newAmbientInterval
                 parser.set('Ambient', 'ambientinterval', str(newAmbientInterval))
                 rebootThread("AmbientThread", newAmbientInterval, "UpdateAmbient")
                 closeMenu()
@@ -958,6 +1005,14 @@ def ButtonHandler(pressed):
                     changeMenu("Top")
                     menuElementsLock.acquire()
                     menuElements = topMenuElements
+                    menuElementsLock.release()
+                    cursorToTop()
+                # If Light Enabled was selected, go into that sub-menu
+                elif (tempElements[tempMenuPos] == "Light Enabled"):
+                    changeMenu("Light Enabled")
+                    # Can only be True or False
+                    menuElementsLock.acquire()
+                    menuElements = [True, False]
                     menuElementsLock.release()
                     cursorToTop()
                 # If Light Interval was selected, go into that sub-menu
@@ -973,6 +1028,19 @@ def ButtonHandler(pressed):
                 parser.set('Light', 'lightinterval', str(newLightInterval))
                 rebootThread("LightThread", newLightInterval, "UpdateLight")
                 closeMenu()
+            elif (tempMenu == "Light Enabled"):
+                global lightEnabled
+                newlightEnabled = tempElements[tempMenuPos]
+                parser.set('Light', 'lightenabled', str(newlightEnabled))
+                lightEnabledLock.acquire()
+                if (newlightEnabled != lightEnabled):
+                    lightEnabled = newlightEnabled
+                    lightEnabledLock.release()
+                    if newlightEnabled == True:
+                        rebootThread("LightThread", lightInterval, "UpdateLight")
+                elif (newlightEnabled == lightEnabled):
+                    lightEnabledLock.release()
+                closeMenu()
             # If we are in the Accelerometer sub-menu already, which one of these options was selected
             elif (tempMenu == "Accelerometer"):
                 # If Back was selected, return to the Top menu
@@ -980,6 +1048,14 @@ def ButtonHandler(pressed):
                     changeMenu("Top")
                     menuElementsLock.acquire()
                     menuElements = topMenuElements
+                    menuElementsLock.release()
+                    cursorToTop()
+                # If Accel Enabled was selected, go into that sub-menu
+                elif (tempElements[tempMenuPos] == "Accel Enabled"):
+                    changeMenu("Accel Enabled")
+                    # Can only be True or False
+                    menuElementsLock.acquire()
+                    menuElements = [True, False]
                     menuElementsLock.release()
                     cursorToTop()
                 # If Ambient Interval was selected, go into that sub-menu
@@ -990,6 +1066,19 @@ def ButtonHandler(pressed):
                     menuElements = [1, 2, 3, 4, 5, 10, 15, 20, 30, 60]
                     menuElementsLock.release()
                     cursorToTop()
+            elif (tempMenu == "Accel Enabled"):
+                global accelEnabled
+                newAccelEnabled = tempElements[tempMenuPos]
+                parser.set('Accelerometer', 'accelenabled', str(newAccelEnabled))
+                accelEnabledLock.acquire()
+                if (newAccelEnabled != accelEnabled):
+                    accelEnabled = newAccelEnabled
+                    accelEnabledLock.release()
+                    if newAccelEnabled == True:
+                        rebootThread("AccelThread", accelInterval, "UpdateAccelerometer")
+                elif (newAccelEnabled == accelEnabled):
+                    accelEnabledLock.release()
+                closeMenu()
             elif (tempMenu == "Accel Interval"):
                 newAccelInterval = tempElements[tempMenuPos]
                 parser.set('Accelerometer', 'accelinterval', str(newAccelInterval))
@@ -997,6 +1086,7 @@ def ButtonHandler(pressed):
                 closeMenu()
             # If we are in the System sub-menu already, which one of these options was selected
             elif (tempMenu == "System"):
+                global killWatch
                 # If Back was selected, return to the Top menu
                 if (tempElements[tempMenuPos] == "Back"):
                     changeMenu("Top")
@@ -1006,15 +1096,23 @@ def ButtonHandler(pressed):
                     cursorToTop()
                 # If Shutdown was selected, shutdown the Raspberry Pi
                 elif (tempElements[tempMenuPos] == "Shutdown"):
-                    proc = subprocess.Popen(["shutdown", "-h", "now"], stdout=subprocess.PIPE)
-                    proc.communicate()
+                    # global killWatch
+                    killWatchLock.acquire()
+                    killWatch = True
+                    killWatchLock.release()
+                    # Gives the program 5 seconds to wrap things up before shutting down
+                    os.system("sudo shutdown -h -t 5")
                 # If Reboot was selected, reboot the Raspberry Pi
                 elif (tempElements[tempMenuPos] == "Reboot"):
-                    proc = subprocess.Popen(["reboot"], stdout=subprocess.PIPE)
-                    proc.communicate()
+                    # global killWatch
+                    killWatchLock.acquire()
+                    killWatch = True
+                    killWatchLock.release()
+                    # Gives the program 5 seconds to wrap things up before rebooting
+                    os.system("sudo shutdown -r -t 5")
                 # If Kill Program was selected, terminate the program
                 elif (tempElements[tempMenuPos] == "Kill Program"):
-                    global killWatch
+                    # global killWatch
                     killWatchLock.acquire()
                     killWatch = True
                     killWatchLock.release()
@@ -1265,6 +1363,18 @@ def Config():
     finally:
         print "Watched Interface: " + watchedInterface
 
+    global sendEnabled
+    try:
+        sendEnabled = parser.getboolean('Requests', 'sendenabled')
+    except (ConfigParser.NoSectionError, ConfigParser.NoOptionError, ValueError):
+        try:
+            parser.set('Requests', 'sendenabled', str(sendEnabled))
+        except(ConfigParser.NoSectionError):
+            parser.add_section('Requests')
+            parser.set('Requests', 'sendenabled', str(sendEnabled))
+    finally:
+        print "Send Enabled: " + str(sendEnabled)
+
     global postInterval
     try:
         postInterval = parser.getfloat('Requests', 'postinterval')
@@ -1289,6 +1399,18 @@ def Config():
     finally:
         print "POST Timeout: " + str(postTimeout)
 
+    global ambientEnabled
+    try:
+        ambientEnabled = parser.getboolean('Ambient', 'ambientenabled')
+    except (ConfigParser.NoSectionError, ConfigParser.NoOptionError, ValueError):
+        try:
+            parser.set('Ambient', 'ambientenabled', str(ambientEnabled))
+        except(ConfigParser.NoSectionError):
+            parser.add_section('Ambient')
+            parser.set('Ambient', 'ambientenabled', str(ambientEnabled))
+    finally:
+        print "Ambient Enabled: " + str(ambientEnabled)
+
     global ambientInterval
     try:
         ambientInterval = parser.getfloat('Ambient', 'ambientinterval')
@@ -1300,6 +1422,18 @@ def Config():
             parser.set('Ambient', 'ambientinterval', str(ambientInterval))
     finally:
         print "Ambient Interval: " + str(ambientInterval)
+
+    global lightEnabled
+    try:
+        lightEnabled = parser.getboolean('Light', 'lightenabled')
+    except (ConfigParser.NoSectionError, ConfigParser.NoOptionError, ValueError):
+        try:
+            parser.set('Light', 'lightenabled', str(lightEnabled))
+        except(ConfigParser.NoSectionError):
+            parser.add_section('Light')
+            parser.set('Light', 'lightenabled', str(lightEnabled))
+    finally:
+        print "Light Enabled: " + str(lightEnabled)
 
     global lightInterval
     try:
@@ -1348,6 +1482,18 @@ def Config():
             parser.set('General', 'publicinterval', str(publicInterval))
     finally:
         print "Public IP Interval: " + str(publicInterval)
+
+    global accelEnabled
+    try:
+        accelEnabled = parser.getboolean('Accelerometer', 'accelenabled')
+    except (ConfigParser.NoSectionError, ConfigParser.NoOptionError, ValueError):
+        try:
+            parser.set('Accelerometer', 'accelenabled', str(accelEnabled))
+        except(ConfigParser.NoSectionError):
+            parser.add_section('Accelerometer')
+            parser.set('Accelerometer', 'accelenabled', str(accelEnabled))
+    finally:
+        print "Accel Enabled: " + str(accelEnabled)
 
     global accelInterval
     try:
@@ -1423,12 +1569,16 @@ def Config():
 
     # Write the config file back to disk with the given values and
     # filling in any blanks with the defaults
-    with open('client.cfg', 'w') as configfile:
-        parser.write(configfile)
-        os.system("chmod 777 client.cfg")
+    writeConfig()
 
     print "-------------------------"
 
+
+# Writes any changes to the config file back to disk whenever changes are made
+def writeConfig():
+    with open('client.cfg', 'w') as configfile:
+        parser.write(configfile)
+        os.system("chmod 777 client.cfg")
 
 # Main Method
 def main():
@@ -1499,11 +1649,7 @@ if __name__ == "__main__":
     finally:
         GPIO.cleanup()
 
-        # Writes any changes to the config file back to disk that may have been made
-        # through the local config menu
-        with open('client.cfg', 'w') as configfile:
-            parser.write(configfile)
-            os.system("chmod 777 client.cfg")
+        writeConfig()
 
         timeEnabledLock.acquire()
         timeEnabled = False
