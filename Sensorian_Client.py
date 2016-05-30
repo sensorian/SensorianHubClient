@@ -26,8 +26,9 @@ import fcntl
 import struct
 import subprocess
 import RPi.GPIO as GPIO
-from flask import Flask
-from flask import request
+from flask import Flask, jsonify, abort, make_response, request
+from flask.ext.restful import Api, Resource, reqparse, fields, marshal
+from flask.ext.httpauth import HTTPBasicAuth
 from multiprocessing import Process
 
 # Sensor initializations
@@ -166,24 +167,118 @@ displayEnabledLock = threading.Lock()
 sleepTimeLock = threading.Lock()
 postTimeoutLock = threading.Lock()
 killWatchLock = threading.Lock()
+flaskEnabledLock = threading.Lock()
 
 app = Flask(__name__)
+api = Api(app)
+auth = HTTPBasicAuth()
 
-@app.route('/data', methods=['GET', 'POST'])
-def data():
-    if request.method == 'POST':
-        print("ValueA is: " + request.form['ValueA'])
-        print("ValueB is: " + request.form['ValueB'])
-        return "Data received!"
-    else:
-        return "Send data here!"
+@auth.get_password
+def get_password(username):
+    if username == 'dylan':
+        return 'dylanrestpass'
+    return None
+
+
+class ConfigListAPI(Resource):
+    decorators = [auth.login_required]
+
+    def __init__(self):
+        self.reqparse = reqparse.RequestParser()
+        self.reqparse.add_argument('name', type=str, location='json')
+        self.reqparse.add_argument('value', type=str, location='json')
+        super(ConfigListAPI, self).__init__()
+
+    def get(self):
+        _config_list = get_all_config()
+        # for variable in _config_list
+        return {'variables': _config_list }
+        # return {'variables': [marshal(variable, config_fields) for variable in _config_list]}
+
+
+class ConfigAPI(Resource):
+    decorators = [auth.login_required]
+
+    def __init__(self):
+        self.reqparse = reqparse.RequestParser()
+        self.reqparse.add_argument('name', type=str, location='json')
+        self.reqparse.add_argument('value', type=str, location='json')
+        super(ConfigAPI, self).__init__()
+
+    def get(self, name):
+        _config_temp = get_config_value(name)
+        if _config_temp != "ConfigNotFound":
+            return {'name': name, 'value': _config_temp}
+        else:
+            abort(404)
+
+    def put(self, name):
+        _config_temp = get_config_value(name)
+        if _config_temp != "ConfigNotFound":
+            args = self.reqparse.parse_args()
+            if args['value'] is not None:
+                _set_temp = set_config_value(name, args['value'])
+                if _set_temp:
+                    return {'name': name, 'value': get_config_value(name)}
+                else:
+                    abort(400, 'Invalid value received, please provide the correct type')
+            else:
+                abort(400, 'No value received, please provide a value in the JSON')
+        else:
+            abort(404)
+
+
+api.add_resource(ConfigListAPI, '/variables', endpoint='variables')
+api.add_resource(ConfigAPI, '/variables/<string:name>', endpoint='variable')
+
 
 def run_flask():
     print("Running Flask")
-    app.run(host='0.0.0.0')
+    app.run(debug=True, use_reloader=False, host='0.0.0.0')
 
 
-server = Process(target=run_flask)
+def shutdown_server():
+    func = request.environ.get('werkzeug.server.shutdown')
+    if func is None:
+        raise RuntimeError('Not running with the Werkzeug Server')
+    func()
+
+
+@app.route('/shutdown', methods=['POST'])
+@auth.login_required
+def shutdown_flask_api():
+    shutdown_server()
+    return 'Flask server shutting down...'
+
+
+@app.route('/commands/kill', methods=['POST'])
+@auth.login_required
+def kill_client_api():
+    kill_program()
+    return 'Sensorian Client shutting down...'
+
+
+@app.route('/commands/shutdown', methods=['POST'])
+@auth.login_required
+def shutdown_pi_api():
+    shutdown_pi()
+    return 'Raspberry Pi shutting down...'
+
+
+@app.route('/commands/reboot', methods=['POST'])
+@auth.login_required
+def reboot_pi_api():
+    reboot_pi()
+    return 'Raspberry Pi rebooting...'
+
+
+def kill_flask():
+    url = 'http://127.0.0.1:5000/shutdown'
+    headers = {'Authorization': 'Basic ZHlsYW46ZHlsYW5yZXN0cGFzcw=='}
+    try:
+        requests.post(url, headers=headers)
+    except requests.exceptions.ConnectionError:
+        print("Flask server already shut down")
 
 
 # Updates the global CPU serial variable
@@ -254,6 +349,17 @@ class GeneralThread(threading.Thread):
                     self.toSleep = 1
                 time.sleep(self.toSleep)
                 self.slept = self.slept + self.toSleep
+
+
+class FlaskThread(threading.Thread):
+    # Initializes a thread to run Flask
+    def __init__(self):
+        threading.Thread.__init__(self)
+        self.threadID = 99
+        self.name = "FlaskThread"
+    def run(self):
+        run_flask()
+        print("Killing " + self.name)
 
 
 # Updates the global light variable
@@ -883,19 +989,12 @@ def ButtonHandler(pressed):
                 global defaultOrientation
                 newOrientationString = tempElements[tempMenuPos]
                 newOrientationSub = newOrientationString[0]
-                newOrientationInt = int(newOrientationSub)
-                defaultOrientationLock.acquire()
-                defaultOrientation = newOrientationInt
-                defaultOrientationLock.release()
-                parser.set('UI', 'defaultorientation', newOrientationSub)
+                set_config_value('defaultorientation', newOrientationSub)
                 closeMenu()
             elif (tempMenu == "Lock Orientation"):
                 global lockOrientation
                 newLockOrientation = tempElements[tempMenuPos]
-                lockOrientationLock.acquire()
-                lockOrientation = newLockOrientation
-                lockOrientationLock.release()
-                parser.set('UI', 'lockorientation', str(newLockOrientation))
+                set_config_value('lockorientation',newLockOrientation)
                 closeMenu()
             elif (tempMenu == "Refresh Interval"):
                 global sleepTime
@@ -1125,26 +1224,44 @@ def ButtonHandler(pressed):
                     cursorToTop()
                 # If Shutdown was selected, shutdown the Raspberry Pi
                 elif (tempElements[tempMenuPos] == "Shutdown"):
-                    # global killWatch
-                    killWatchLock.acquire()
-                    killWatch = True
-                    killWatchLock.release()
+                    kill_program()
                     # Gives the program 5 seconds to wrap things up before shutting down
                     os.system("sudo shutdown -h -t 5")
                 # If Reboot was selected, reboot the Raspberry Pi
                 elif (tempElements[tempMenuPos] == "Reboot"):
-                    # global killWatch
-                    killWatchLock.acquire()
-                    killWatch = True
-                    killWatchLock.release()
+                    kill_program()
                     # Gives the program 5 seconds to wrap things up before rebooting
                     os.system("sudo shutdown -r -t 5")
                 # If Kill Program was selected, terminate the program
                 elif (tempElements[tempMenuPos] == "Kill Program"):
-                    # global killWatch
-                    killWatchLock.acquire()
-                    killWatch = True
-                    killWatchLock.release()
+                    kill_program()
+
+
+def kill_program():
+    global killWatch
+    killWatchLock.acquire()
+    killWatch = True
+    killWatchLock.release()
+
+
+def shutdown_pi():
+    kill_program()
+    shutdown_helper = Process(target=shutdown_pi_helper)
+    shutdown_helper.start()
+
+
+def shutdown_pi_helper():
+    os.system("sudo python shutdown.py -h -t 5")
+
+
+def reboot_pi():
+    kill_program()
+    reboot_helper = Process(target=reboot_pi_helper)
+    reboot_helper.start()
+
+
+def reboot_pi_helper():
+    os.system("sudo python shutdown.py -r -t 5")
 
 
 # Changes the menu to the passed value
@@ -1169,6 +1286,54 @@ def cursorToTop():
     menuPositionLock.acquire()
     menuPosition = 0
     menuPositionLock.release()
+
+
+def get_config_value(name):
+    if (name == "defaultorientation"):
+        defaultOrientationLock.acquire()
+        _return_value = defaultOrientation
+        defaultOrientationLock.release()
+    elif (name == "lockorientation"):
+        lockOrientationLock.acquire()
+        _return_value = lockOrientation
+        lockOrientationLock.release()
+    else:
+        _return_value = "ConfigNotFound"
+    return str(_return_value)
+
+
+def set_config_value(name, value):
+    succeeded = False
+    if (name == "defaultorientation"):
+        global defaultOrientation
+        defaultOrientationLock.acquire()
+        try:
+            defaultOrientation = int(value)
+            parser.set('UI', 'defaultorientation', value)
+            succeeded = True
+        except:
+            succeeded = False
+        finally:
+            defaultOrientationLock.release()
+    elif (name == "lockorientation"):
+        global lockOrientation
+        lockOrientationLock.acquire()
+        try:
+            lockOrientation = bool(value)
+            parser.set('UI', 'lockorientation', value)
+            succeeded = True
+        except:
+            succeeded = False
+        finally:
+            lockOrientationLock.release()
+    return succeeded
+
+
+def get_all_config():
+    _config_list = []
+    _config_list.append({'name' : "defaultorientation", 'value' : get_config_value("defaultorientation")})
+    _config_list.append({'name': "lockorientation", 'value': get_config_value("lockorientation")})
+    return _config_list
 
 
 def rebootThread(threadName, threadInterval, sentinelName):
@@ -1328,7 +1493,7 @@ methods = {"UpdateDateTime": UpdateDateTime,
            "UpdatePublicIP": UpdatePublicIP,
            "UpdateAccelerometer": UpdateAccelerometer,
            "UpdateButton": UpdateButton,
-           "SendValues": SendValues
+           "SendValues": SendValues,
            }
 
 
@@ -1625,9 +1790,8 @@ def main():
     rebootThread("AccelThread", accelInterval, "UpdateAccelerometer")
     rebootThread("SendThread", postInterval, "SendValues")
 
-    if flaskEnabled:
-        print("Starting Flask")
-        server.start()
+    flaskThread = FlaskThread()
+    flaskThread.start()
 
     # Set up the GPIO for the touch buttons and LED
     GPIO.setup(CAP_PIN, GPIO.IN)
@@ -1680,6 +1844,8 @@ if __name__ == "__main__":
     # Tell all threads to stop if the main program stops by setting their
     # respective repeat sentinels to False
     finally:
+        kill_flask()
+
         GPIO.cleanup()
 
         writeConfig()
@@ -1719,8 +1885,3 @@ if __name__ == "__main__":
         sendEnabledLock.acquire()
         sendEnabled = False
         sendEnabledLock.release()
-
-        print("Killing Flask")
-        server.terminate()
-        server.join()
-        print("Killed Flask")
