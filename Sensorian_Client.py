@@ -26,9 +26,9 @@ import fcntl
 import struct
 import subprocess
 import RPi.GPIO as GPIO
-from flask import Flask, jsonify, abort, make_response, request
-from flask.ext.restful import Api, Resource, reqparse, fields, marshal
-from flask.ext.httpauth import HTTPBasicAuth
+from flask import Flask, abort, request
+from flask_restful import Api, Resource, reqparse
+from flask_httpauth import HTTPBasicAuth
 from multiprocessing import Process
 
 # Sensor initializations
@@ -73,7 +73,7 @@ publicIPEnabled = True
 accelEnabled = True
 pressureEnabled = True
 buttonEnabled = True
-sendEnabled = True
+sendEnabled = False
 flaskEnabled = True
 
 # Global sensor/IP variables protected by locks below if required
@@ -88,7 +88,7 @@ accelY = 0
 accelZ = 0
 modeprevious = -1
 ambientPressure = -1
-watchedInterface = "wlan0"
+watchedInterface = "eth0"
 interfaceIP = "0.0.0.0"
 publicIP = "0.0.0.0"
 serverURL = "http://localhost/"
