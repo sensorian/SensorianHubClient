@@ -2,7 +2,6 @@
 from __future__ import print_function
 from __future__ import division
 from future import standard_library
-standard_library.install_aliases()
 from builtins import str
 from builtins import range
 from past.utils import old_div
@@ -30,6 +29,8 @@ from flask import Flask, abort, request
 from flask_restful import Api, Resource, reqparse
 from flask_httpauth import HTTPBasicAuth
 from multiprocessing import Process
+
+standard_library.install_aliases()
 
 # Sensor initializations
 
@@ -168,6 +169,16 @@ sleepTimeLock = threading.Lock()
 postTimeoutLock = threading.Lock()
 killWatchLock = threading.Lock()
 flaskEnabledLock = threading.Lock()
+interfaceIntervalLock = threading.Lock()
+publicIntervalLock = threading.Lock()
+postIntervalLock = threading.Lock()
+serverURLLock = threading.Lock()
+iftttKeyLock = threading.Lock()
+iftttEventLock = threading.Lock()
+ambientIntervalLock = threading.Lock()
+lightIntervalLock = threading.Lock()
+accelIntervalLock = threading.Lock()
+cpuTempIntervalLock = threading.Lock()
 
 app = Flask(__name__)
 api = Api(app)
@@ -1289,14 +1300,97 @@ def cursorToTop():
 
 
 def get_config_value(name):
-    if (name == "defaultorientation"):
+    # UI Section
+    if name == "defaultorientation":
         defaultOrientationLock.acquire()
         _return_value = defaultOrientation
         defaultOrientationLock.release()
-    elif (name == "lockorientation"):
+    elif name == "lockorientation":
         lockOrientationLock.acquire()
         _return_value = lockOrientation
         lockOrientationLock.release()
+    elif name == "refreshinterval":
+        sleepTimeLock.acquire()
+        _return_value = sleepTime
+        sleepTimeLock.release()
+    elif name == "displayenabled":
+        displayEnabledLock.acquire()
+        _return_value = displayEnabled
+        displayEnabledLock.release()
+    elif name == "printenabled":
+        printEnabledLock.acquire()
+        _return_value = printEnabled
+        printEnabledLock.release()
+    # General Section
+    elif name == "watchedinterface":
+        interfaceLock.acquire()
+        _return_value = watchedInterface
+        interfaceLock.release()
+    elif name == "cputempinterval":
+        cpuTempIntervalLock.acquire()
+        _return_value = cpuTempInterval
+        cpuTempIntervalLock.release()
+    elif name == "interfaceinterval":
+        interfaceIntervalLock.acquire()
+        _return_value = interfaceInterval
+        interfaceIntervalLock.release()
+    elif name == "publicinterval":
+        publicIntervalLock.acquire()
+        _return_value = publicInterval
+        publicIntervalLock.release()
+    # Requests Section
+    elif name == "sendenabled":
+        sendEnabledLock.acquire()
+        _return_value = sendEnabled
+        sendEnabledLock.release()
+    elif name == "postinterval":
+        postIntervalLock.acquire()
+        _return_value = postInterval
+        postIntervalLock.release()
+    elif name == "posttimeout":
+        postTimeoutLock.acquire()
+        _return_value = postTimeout
+        postTimeoutLock.release()
+    elif name == "serverurl":
+        serverURLLock.acquire()
+        _return_value = serverURL
+        serverURLLock.release()
+    elif name == "iftttkey":
+        iftttKeyLock.acquire()
+        _return_value = iftttKey
+        iftttKeyLock.release()
+    elif name == "iftttevent":
+        iftttEventLock.acquire()
+        _return_value = iftttEvent
+        iftttEventLock.release()
+    # Ambient Section
+    elif name == "ambientenabled":
+        ambientEnabledLock.acquire()
+        _return_value = ambientEnabled
+        ambientEnabledLock.release()
+    elif name == "ambientinterval":
+        ambientIntervalLock.acquire()
+        _return_value = ambientInterval
+        ambientIntervalLock.release()
+    # Light Section
+    elif name == "lightenabled":
+        lightEnabledLock.acquire()
+        _return_value = lightEnabled
+        lightEnabledLock.release()
+    elif name == "lightinterval":
+        lightIntervalLock.acquire()
+        _return_value = lightInterval
+        lightIntervalLock.release()
+    # Accelerometer Section
+    elif name == "accelenabled":
+        accelEnabledLock.acquire()
+        _return_value = accelEnabled
+        accelEnabledLock.release()
+    elif name == "accelinterval":
+        accelIntervalLock.acquire()
+        _return_value = accelInterval
+        accelIntervalLock.release()
+    # If variable name wasn't found in the config, return this message
     else:
         _return_value = "ConfigNotFound"
     return str(_return_value)
@@ -1304,7 +1398,7 @@ def get_config_value(name):
 
 def set_config_value(name, value):
     succeeded = False
-    if (name == "defaultorientation"):
+    if name == "defaultorientation":
         global defaultOrientation
         defaultOrientationLock.acquire()
         try:
@@ -1315,7 +1409,7 @@ def set_config_value(name, value):
             succeeded = False
         finally:
             defaultOrientationLock.release()
-    elif (name == "lockorientation"):
+    elif name == "lockorientation":
         global lockOrientation
         lockOrientationLock.acquire()
         try:
@@ -1347,8 +1441,33 @@ def bool_check(value):
 
 def get_all_config():
     _config_list = []
+    # UI Section
     _config_list.append({'name' : "defaultorientation", 'value' : get_config_value("defaultorientation")})
     _config_list.append({'name': "lockorientation", 'value': get_config_value("lockorientation")})
+    _config_list.append({'name': "refreshinterval", 'value': get_config_value("refreshinterval")})
+    _config_list.append({'name': "displayenabled", 'value': get_config_value("displayenabled")})
+    _config_list.append({'name': "printenabled", 'value': get_config_value("printenabled")})
+    # General Section
+    _config_list.append({'name': "watchedinterface", 'value': get_config_value("watchedinterface")})
+    _config_list.append({'name': "cputempinterval", 'value': get_config_value("cputempinterval")})
+    _config_list.append({'name': "interfaceinterval", 'value': get_config_value("interfaceinterval")})
+    _config_list.append({'name': "publicinterval", 'value': get_config_value("publicinterval")})
+    # Requests Section
+    _config_list.append({'name': "sendenabled", 'value': get_config_value("sendenabled")})
+    _config_list.append({'name': "postinterval", 'value': get_config_value("postinterval")})
+    _config_list.append({'name': "posttimeout", 'value': get_config_value("posttimeout")})
+    _config_list.append({'name': "serverurl", 'value': get_config_value("serverurl")})
+    _config_list.append({'name': "iftttkey", 'value': get_config_value("iftttkey")})
+    _config_list.append({'name': "iftttevent", 'value': get_config_value("iftttevent")})
+    # Ambient Section
+    _config_list.append({'name': "ambientenabled", 'value': get_config_value("ambientenabled")})
+    _config_list.append({'name': "ambientinterval", 'value': get_config_value("ambientinterval")})
+    # Light Section
+    _config_list.append({'name': "lightenabled", 'value': get_config_value("lightenabled")})
+    _config_list.append({'name': "lightinterval", 'value': get_config_value("lightinterval")})
+    # Accelerometer Section
+    _config_list.append({'name': "accelenabled", 'value': get_config_value("accelenabled")})
+    _config_list.append({'name': "accelinterval", 'value': get_config_value("accelinterval")})
     return _config_list
 
 
