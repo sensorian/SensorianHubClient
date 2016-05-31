@@ -1932,8 +1932,12 @@ def main():
     reboot_thread("AccelThread", accelInterval, "UpdateAccelerometer")
     reboot_thread("SendThread", postInterval, "SendValues")
 
-    flask_thread = FlaskThread()
-    flask_thread.start()
+    flaskEnabledLock.acquire()
+    temp_flask_enabled = flaskEnabled
+    flaskEnabledLock.release()
+    if temp_flask_enabled:
+        flask_thread = FlaskThread()
+        flask_thread.start()
 
     # Set up the GPIO for the touch buttons and LED
     GPIO.setup(CAP_PIN, GPIO.IN)
