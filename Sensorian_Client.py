@@ -1319,15 +1319,31 @@ def set_config_value(name, value):
         global lockOrientation
         lockOrientationLock.acquire()
         try:
-            lockOrientation = bool(value)
-            parser.set('UI', 'lockorientation', value)
-            succeeded = True
+            _lock_bool = bool_check(value)
+            if _lock_bool == 1:
+                lockOrientation = True
+                parser.set('UI', 'lockorientation', 'True')
+                succeeded = True
+            elif _lock_bool == 0:
+                lockOrientation = False
+                parser.set('UI', 'lockorientation', 'False')
+                succeeded = True
+            elif _lock_bool == -1:
+                succeeded = False
         except:
             succeeded = False
         finally:
             lockOrientationLock.release()
     return succeeded
 
+
+def bool_check(value):
+    if value in ['True', 'true', 'TRUE', 'T', 't', 'Y', 'y', '1']:
+        return 1
+    elif value in ['False', 'false', 'FALSE', 'F', 'f', 'N', 'n', '0']:
+        return 0
+    else:
+        return -1
 
 def get_all_config():
     _config_list = []
