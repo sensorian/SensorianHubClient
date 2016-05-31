@@ -1,0 +1,8 @@
+smbus
+numpy
+spidev
+RPi.GPIO
+Pillow
+Flask
+Flask-HTTPAuth
+Flask-RESTful
