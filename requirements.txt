@@ -1,5 +1,3 @@
-smbus
-numpy
 spidev
 RPi.GPIO
 Pillow
