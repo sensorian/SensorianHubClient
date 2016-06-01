@@ -1402,6 +1402,7 @@ def get_config_value(name):
 
 def set_config_value(name, value):
     succeeded = False
+    # UI Section
     if name == "defaultorientation":
         global defaultOrientation
         defaultOrientationLock.acquire()
@@ -1416,32 +1417,58 @@ def set_config_value(name, value):
     elif name == "lockorientation":
         global lockOrientation
         lockOrientationLock.acquire()
+        lock_bool = bool_check(str(value))
+        if lock_bool[0]:
+            lockOrientation = lock_bool[1]
+            parser.set('UI', 'lockorientation', str(lock_bool[1]))
+            succeeded = True
+        elif not lock_bool[0]:
+            succeeded = False
+        lockOrientationLock.release()
+    elif name == "refreshinterval":
+        global sleepTime
+        sleepTimeLock.acquire()
         try:
-            lock_bool = bool_check(value)
-            if lock_bool == 1:
-                lockOrientation = True
-                parser.set('UI', 'lockorientation', 'True')
-                succeeded = True
-            elif lock_bool == 0:
-                lockOrientation = False
-                parser.set('UI', 'lockorientation', 'False')
-                succeeded = True
-            elif lock_bool == -1:
-                succeeded = False
+            sleepTime = float(value)
+            parser.set('UI', 'refreshinterval', value)
+            succeeded = True
         except TypeError:
             succeeded = False
         finally:
-            lockOrientationLock.release()
+            sleepTimeLock.release()
+    elif name == "displayenabled":
+        global displayEnabled
+        displayEnabledLock.acquire()
+        lock_bool = bool_check(str(value))
+        if lock_bool[0]:
+            displayEnabled = lock_bool[1]
+            parser.set('UI', 'displayenabled', str(lock_bool[1]))
+            succeeded = True
+        elif not lock_bool[0]:
+            succeeded = False
+        displayEnabledLock.release()
+    elif name == "printenabled":
+        global printEnabled
+        printEnabledLock.acquire()
+        lock_bool = bool_check(str(value))
+        if lock_bool[0]:
+            printEnabled = lock_bool[1]
+            parser.set('UI', 'printenabled', str(lock_bool[1]))
+            succeeded = True
+        elif not lock_bool[0]:
+            succeeded = False
+        printEnabledLock.release()
+    # General Section
     return succeeded
 
 
 def bool_check(value):
     if value in ['True', 'true', 'TRUE', 'T', 't', 'Y', 'y', '1']:
-        return 1
+        return [True, True]
     elif value in ['False', 'false', 'FALSE', 'F', 'f', 'N', 'n', '0']:
-        return 0
+        return [True, False]
     else:
-        return -1
+        return [False, False]
 
 
 def get_all_config():
