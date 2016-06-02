@@ -10,8 +10,11 @@ sudo apt-get -y install python-numpy || { echo "Failed to install python-numpy" 
 sudo apt-get -y install libjpeg-dev || { echo "Failed to install libjpeg-dev" && exit; }
 
 #Uninstall Python Imaging Library because it leaks and doesn't play well with Pillow
-sudo apt-get -y purge python-pil || { echo "Failed to uninstall python-pil" && exit; }
+sudo apt-get -y purge python-pil || { echo "Failed to unins python-pil" && exit; }
 sudo apt-get -y purge python3-pil || { echo "Failed to uninstall python3-pil" && exit; }
+
+#Clean up some of the leftovers from pil
+sudo apt-get -y autoremove
 
 #Install other required python modules using pip
 sudo pip install -r requirements.txt
