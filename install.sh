@@ -4,17 +4,22 @@ sudo apt-get update
 #Install other packages from the Raspbian Repository
 sudo apt-get -y install i2c-tools || { echo "Failed to install i2c-tools" && exit; }
 sudo apt-get -y install libi2c-dev || { echo "Failed to install libi2c-dev" && exit; }
-sudo apt-get -y install python-smbus || { echo  "Failed to install python-smbus" && exit; }
-sudo apt-get -y install python-numpy || { echo "Failed to install python-numpy" && exit; }
 sudo apt-get -y install python-dev || { echo "Failed to install python-dev" && exit; }
-sudo apt-get -y install python-spidev || { echo "Failed to install python-spidev" && exit; }
 sudo apt-get -y install python-pkg-resources || { echo "Failed to install python-pkg-resources" && exit; }
 sudo apt-get -y install python-pip || { echo "Failed to install python-pip" && exit; }
-sudo apt-get -y install python-wtforms || { echo "Failed to install python-wtforms" && exit; }
+sudo apt-get -y install python-smbus || { echo "Failed to install python-smbus" && exit; }
+sudo apt-get -y install python-numpy || { echo "Failed to install python-numpy" && exit; }
 sudo apt-get -y install libjpeg-dev || { echo "Failed to install libjpeg-dev" && exit; }
 
-#Install Pillow rather than PIL since PIL memory leaks and such
-sudo easy_install Pillow
+#Uninstall Python Imaging Library because it leaks and doesn't play well with Pillow
+sudo apt-get -y purge python-pil || { echo "Failed to unins python-pil" && exit; }
+sudo apt-get -y purge python3-pil || { echo "Failed to uninstall python3-pil" && exit; }
+
+#Clean up some of the leftovers from pil
+sudo apt-get -y autoremove
+
+#Install other required python modules using pip
+sudo pip install -r requirements.txt
 
 #Compile all needed .so files
 #Enter PythonSharedObjectSrc

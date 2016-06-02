@@ -18,7 +18,7 @@ printenabled = False
 [General]
 #The network interface on which to watch the local IP for the use of
 #SSH, FTP and the like, eg. wlan0, eth0, tun0
-watchedinterface = wlan0
+watchedinterface = eth0
 #How often to update the CPU temperature in seconds
 cputempinterval = 5
 #How often to update the local IP in seconds
@@ -30,7 +30,7 @@ publicinterval = 30
 #Section pertaining to POST and request related values
 [Requests]
 #Boolean toggle to send the various sensor values to a given server via POST request
-postenabled = False
+sendenabled = False
 #How often to POST the variables to the given server URL in seconds
 postinterval = 4
 #How long to wait before timing out the POST request in seconds

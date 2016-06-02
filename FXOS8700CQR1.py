@@ -825,7 +825,7 @@ class FXOS8700CQR1(object):
 		"""
 		(x, y, z) = self.pollAccelerometer()		
 		heading = (math.atan2((y), (x)) * 180)/math.pi
-  		return heading
+		return heading
 		
 	def	setODR (self,DataRateValue):
 		"""

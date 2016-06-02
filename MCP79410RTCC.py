@@ -224,7 +224,7 @@ class MCP79410(object):
 		:param none: 
 		:returns current_time : This is an RTCC class object that contains the time. 
 		"""
-                secondsFIX = self.bcd2dec( self.readRegister(SEC) &(~START_32KHZ)) #Access once before to fix
+		secondsFIX = self.bcd2dec( self.readRegister(SEC) &(~START_32KHZ)) #Access once before to fix
 		seconds = self.bcd2dec( self.readRegister(SEC) &(~START_32KHZ)) # mask out ST bit
 		minutes = self.bcd2dec( self.readRegister(MIN))
 		
