@@ -5,6 +5,8 @@ sudo apt-get update
 sudo apt-get -y install i2c-tools || { echo "Failed to install i2c-tools" && exit; }
 sudo apt-get -y install libi2c-dev || { echo "Failed to install libi2c-dev" && exit; }
 sudo apt-get -y install python-dev || { echo "Failed to install python-dev" && exit; }
+sudo apt-get -y install python-pkg-resources || { echo "Failed to install python-pkg-resources" && exit; }
+sudo apt-get -y install python-pip || { echo "Failed to install python-pip" && exit; }
 sudo apt-get -y install python-smbus || { echo "Failed to install python-smbus" && exit; }
 sudo apt-get -y install python-numpy || { echo "Failed to install python-numpy" && exit; }
 sudo apt-get -y install libjpeg-dev || { echo "Failed to install libjpeg-dev" && exit; }

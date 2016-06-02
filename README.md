@@ -1,11 +1,11 @@
 # SensorianHubClient
 Python client for the Sensorian Shield on Raspberry Pi to display and POST data  
-Course project for SOFE 4870U - Special Topics: Cloud Computing 2016  
+Compatible with the latest official Raspbian image (2016-05-27) and Python 2.7  
+Previous versions may be compatible but are currently untested  
 
 Code written and maintained myself with the use of the Sensorian Shield firmware  
 Please see Sensorian on [GitHub](https://github.com/sensorian) or their [main website](http://sensorian.io/) for details  
-Currently written in Python with the use of Python and C drivers  
-I might port it to C in the future to avoid the use of the DLLs  
+Currently written in Python with the use of Python and C drivers/DLLs  
 
 To get this working in a split, just follow these simple instructions!  
 To summarize for experts, simply clone/download the repo wherever and run the install script!  
