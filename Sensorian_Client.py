@@ -106,7 +106,7 @@ postTimeout = 5
 ambientInterval = 5
 lightInterval = 1
 cpuTempInterval = 5
-interfaceInterval = 30
+interfaceInterval = 5
 publicInterval = 30
 accelInterval = 1
 inMenu = False
@@ -147,7 +147,7 @@ serialLock = threading.Lock()
 ambientTempLock = threading.Lock()
 lightLock = threading.Lock()
 modeLock = threading.Lock()
-interfaceLock = threading.Lock()
+watchedInterfaceLock = threading.Lock()
 interfaceIPLock = threading.Lock()
 publicIPLock = threading.Lock()
 cpuTempLock = threading.Lock()
@@ -515,9 +515,9 @@ def get_cpu_temp():
 # Update the global variable for the IP of the primary interface
 def update_watched_interface_ip():
     global interfaceIP
-    interfaceLock.acquire()
+    watchedInterfaceLock.acquire()
     temp_interface = watchedInterface
-    interfaceLock.release()
+    watchedInterfaceLock.release()
     ipaddr = get_interface_ip(temp_interface)
     interfaceIPLock.acquire()
     interfaceIP = ipaddr
@@ -542,9 +542,11 @@ def get_interface_ip(interface):
             0x8915,  # SIOCGIFADDR
             struct.pack('256s', interface[:15])
         )[20:24])
-    # If it fails, return localhost IP
+    # If it fails, return empty IP
     except:
-        ipaddr = "127.0.0.1"
+        ipaddr = "0.0.0.0"
+    finally:
+        s.close()
     return ipaddr
 
 
@@ -927,9 +929,9 @@ def button_handler(pressed):
             elif temp_menu == "Watched Interface":
                 global watchedInterface
                 new_interface = temp_elements[temp_menu_pos]
-                interfaceLock.acquire()
+                watchedInterfaceLock.acquire()
                 watchedInterface = new_interface
-                interfaceLock.release()
+                watchedInterfaceLock.release()
                 parser.set('General', 'watchedinterface', new_interface)
                 update_watched_interface_ip()
                 close_menu()
@@ -1327,9 +1329,9 @@ def get_config_value(name):
         printEnabledLock.release()
     # General Section
     elif name == "watchedinterface":
-        interfaceLock.acquire()
+        watchedInterfaceLock.acquire()
         return_value = watchedInterface
-        interfaceLock.release()
+        watchedInterfaceLock.release()
     elif name == "cputempinterval":
         cpuTempIntervalLock.acquire()
         return_value = cpuTempInterval
@@ -1459,6 +1461,51 @@ def set_config_value(name, value):
             succeeded = False
         printEnabledLock.release()
     # General Section
+    elif name == "watchedinterface":
+        global watchedInterface
+        watchedInterfaceLock.acquire()
+        try:
+            watchedInterface = value
+            parser.set('General', 'watchedinterface', value)
+            succeeded = True
+        except TypeError:
+            succeeded = False
+        finally:
+            watchedInterfaceLock.release()
+    elif name == "cputempinterval":
+        global cpuTempInterval
+        cpuTempIntervalLock.acquire()
+        try:
+            cpuTempInterval = float(value)
+            parser.set('General', 'cputempinterval', value)
+            succeeded = True
+        except TypeError:
+            succeeded = False
+        finally:
+            cpuTempIntervalLock.release()
+    elif name == "interfaceinterval":
+        global interfaceInterval
+        interfaceIntervalLock.acquire()
+        try:
+            interfaceInterval = float(value)
+            parser.set('General', 'interfaceinterval', value)
+            succeeded = True
+        except TypeError:
+            succeeded = False
+        finally:
+            interfaceIntervalLock.release()
+    elif name == "publicinterval":
+        global publicInterval
+        publicIntervalLock.acquire()
+        try:
+            publicInterval = float(value)
+            parser.set('General', 'publicinterval', value)
+            succeeded = True
+        except TypeError:
+            succeeded = False
+        finally:
+            publicIntervalLock.release()
+    # Requests Section
     return succeeded
 
 
