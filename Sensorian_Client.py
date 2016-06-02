@@ -1499,6 +1499,141 @@ def set_config_value(name, value):
         finally:
             publicIntervalLock.release()
     # Requests Section
+    elif name == "sendenabled":
+        global sendEnabled
+        sendEnabledLock.acquire()
+        lock_bool = bool_check(str(value))
+        if lock_bool[0]:
+            sendEnabled = lock_bool[1]
+            parser.set('Requests', 'sendenabled', str(lock_bool[1]))
+            succeeded = True
+        elif not lock_bool[0]:
+            succeeded = False
+        sendEnabledLock.release()
+    elif name == "postinterval":
+        global postInterval
+        postIntervalLock.acquire()
+        try:
+            postInterval = float(value)
+            parser.set('Requests', 'postinterval', value)
+            succeeded = True
+        except TypeError:
+            succeeded = False
+        finally:
+            postIntervalLock.release()
+    elif name == "posttimeout":
+        global postTimeout
+        postTimeoutLock.acquire()
+        try:
+            postTimeout = float(value)
+            parser.set('Requests', 'posttimeout', value)
+            succeeded = True
+        except TypeError:
+            succeeded = False
+        finally:
+            postTimeoutLock.release()
+    elif name == "serverurl":
+        global serverURL
+        serverURLLock.acquire()
+        try:
+            serverURL = value
+            parser.set('Requests', 'serverurl', value)
+            succeeded = True
+        except TypeError:
+            succeeded = False
+        finally:
+            serverURLLock.release()
+    elif name == "iftttkey":
+        global iftttKey
+        iftttKeyLock.acquire()
+        try:
+            iftttKey = value
+            parser.set('Requests', 'iftttkey', value)
+            succeeded = True
+        except TypeError:
+            succeeded = False
+        finally:
+            iftttKeyLock.release()
+    elif name == "iftttevent":
+        global iftttEvent
+        iftttEventLock.acquire()
+        try:
+            iftttEvent = value
+            parser.set('Requests', 'iftttevent', value)
+            succeeded = True
+        except TypeError:
+            succeeded = False
+        finally:
+            iftttEventLock.release()
+    # Ambient Section
+    elif name == "ambientenabled":
+        global ambientEnabled
+        ambientEnabledLock.acquire()
+        lock_bool = bool_check(str(value))
+        if lock_bool[0]:
+            ambientEnabled = lock_bool[1]
+            parser.set('Ambient', 'ambientenabled', str(lock_bool[1]))
+            succeeded = True
+        elif not lock_bool[0]:
+            succeeded = False
+        ambientEnabledLock.release()
+    elif name == "ambientinterval":
+        global ambientInterval
+        ambientIntervalLock.acquire()
+        try:
+            ambientInterval = float(value)
+            parser.set('Ambient', 'ambientinterval', value)
+            succeeded = True
+        except TypeError:
+            succeeded = False
+        finally:
+            ambientIntervalLock.release()
+    # Light Section
+    elif name == "lightenabled":
+        global lightEnabled
+        lightEnabledLock.acquire()
+        lock_bool = bool_check(str(value))
+        if lock_bool[0]:
+            lightEnabled = lock_bool[1]
+            parser.set('Light', 'lightenabled', str(lock_bool[1]))
+            succeeded = True
+        elif not lock_bool[0]:
+            succeeded = False
+        lightEnabledLock.release()
+    elif name == "lightinterval":
+        global lightInterval
+        lightIntervalLock.acquire()
+        try:
+            lightInterval = float(value)
+            parser.set('Light', 'lightinterval', value)
+            succeeded = True
+        except TypeError:
+            succeeded = False
+        finally:
+            lightIntervalLock.release()
+    # Accelerometer Section
+    elif name == "accelenabled":
+        global accelEnabled
+        accelEnabledLock.acquire()
+        lock_bool = bool_check(str(value))
+        if lock_bool[0]:
+            accelEnabled = lock_bool[1]
+            parser.set('Accelerometer', 'accelenabled', str(lock_bool[1]))
+            succeeded = True
+        elif not lock_bool[0]:
+            succeeded = False
+        accelEnabledLock.release()
+    elif name == "accelinterval":
+        global accelInterval
+        accelIntervalLock.acquire()
+        try:
+            accelInterval = float(value)
+            parser.set('Accelerometer', 'accelinterval', value)
+            succeeded = True
+        except TypeError:
+            succeeded = False
+        finally:
+            accelIntervalLock.release()
     return succeeded
 
 
