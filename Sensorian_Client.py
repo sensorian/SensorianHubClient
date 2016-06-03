@@ -69,6 +69,7 @@ pressureEnabled = True
 buttonEnabled = True
 sendEnabled = False
 flaskEnabled = True
+socketEnabled = True
 
 # Global sensor/IP variables protected by locks below if required
 currentDateTime = RT_CLOCK.RTCC_Struct(0, 0, 0, 1, 1, 1, 2016)
@@ -172,6 +173,7 @@ ambientIntervalLock = threading.Lock()
 lightIntervalLock = threading.Lock()
 accelIntervalLock = threading.Lock()
 cpuTempIntervalLock = threading.Lock()
+socketEnabledLock = threading.Lock()
 
 app = Flask(__name__)
 api = Api(app)
@@ -367,7 +369,59 @@ class FlaskThread(threading.Thread):
 
     def run(self):
         run_flask()
-        print("Killing " + self.name)
+        print("Killing FlaskThread")
+
+
+class SocketThread(threading.Thread):
+    # Initializes a thread to run Flask
+    def __init__(self):
+        threading.Thread.__init__(self)
+        self.threadID = 100
+        self.name = "SocketThread"
+        self.connected = False
+        self.host = '127.0.0.1'
+        self.port = 8000
+        self.repeat = check_sentinel("SocketSentinel")
+        self.slept = 0
+        self.keep_alive = 5
+
+    def run(self):
+        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        while self.repeat:
+            if not self.connected:
+                s.connect((self.host, self.port))
+                self.connected = True
+            if self.slept >= self.keep_alive:
+                s.send("KeepAlive")
+                message = s.recv(1024)
+                if message == "LIVE":
+                    print("LIVE Received")
+                elif message == "PREPARE":
+                    s.send("READY")
+                    data = s.recv(1024)
+                    if data == "CANCEL":
+                        print("CANCEL Received")
+                    elif data:
+                        try:
+                            colon = data.index(":")
+                            config_temp = get_config_value(data[0:colon])
+                            if config_temp != "ConfigNotFound":
+                                set_temp = set_config_value(data[0:colon], data[colon + 1:len(data) + 1])
+                                if set_temp:
+                                    print("Updated " + data[0:colon] + " to " + get_config_value(data[0:colon]))
+                                else:
+                                    print("Did not update " + data[0:colon] + ", stays " + get_config_value(data[0:colon]))
+                            else:
+                                print("Did not find variable named " + data[0:colon])
+                        except ValueError:
+                            print("Malformed data received from socket")
+                self.slept = 0
+            elif self.slept < self.keep_alive:
+                self.slept += 1
+            self.repeat = check_sentinel("SocketSentinel")
+            time.sleep(1)
+        s.close()
+        print("Killing SocketThread")
 
 
 # Updates the global light variable
@@ -704,6 +758,10 @@ def check_sentinel(sentinel):
         sendEnabledLock.acquire()
         state = sendEnabled
         sendEnabledLock.release()
+    elif sentinel == "SocketSentinel":
+        socketEnabledLock.acquire()
+        state = socketEnabled
+        socketEnabledLock.release()
     else:
         state = False
     return state
@@ -755,17 +813,16 @@ def set_sentinel(sentinel, state):
 
 # Example IFTTT integration to call a trigger on their Maker Channel when
 # a button is pressed
-'''
-def ButtonHandler():
-    url = "https://maker.ifttt.com/trigger/" + iftttEvent + "/with/key/" + iftttKey
+
+def ifttt_sender(event_name):
+    url = "https://maker.ifttt.com/trigger/" + event_name + "/with/key/" + "d9ip3mcBoqN1_UkP_SyUWnnmnAJapn7BK4WP-7esu29"
     # Make a POST request to the IFTTT maker channel URL using the event name
     # and API key provided in the config file, catching any failures
     try:
         r = requests.post(url, timeout=postTimeout)
-        # print r.text #For debugging POST requests
+        print(r.text)  # For debugging POST requests
     except:
-        print "POST ERROR - Check connection and server"
-'''
+        print("POST ERROR - Check connection and server")
 
 
 def get_menu_elements():
@@ -798,6 +855,10 @@ def button_handler(pressed):
             change_menu("Top")
             set_menu_elements(topMenuElements)
             cursor_to_top()
+        elif pressed == 1:
+            ifttt_sender("SensorianButton1")
+        elif pressed == 3:
+            ifttt_sender("SensorianButton3")
     else:
         print("Menu Pressed " + str(pressed))
         currentMenuLock.acquire()
@@ -1725,10 +1786,12 @@ def send_values():
     temp_timeout = postTimeout
     postTimeoutLock.release()
     try:
-        requests.post(temp_url, data=json.dumps(payload), timeout=temp_timeout)
-        # print r.text #For debugging POST requests
+        post_request = requests.post(temp_url, data=json.dumps(payload), timeout=temp_timeout)
+        print(post_request.text)  # For debugging POST requests
     except requests.ConnectionError:
         print("POST ERROR - Check connection and server")
+    except requests.exceptions.Timeout:
+        print("POST TIMEOUT - Please try again or check connection")
 
 
 # Method names for the threads to call to update their variables
@@ -2045,6 +2108,10 @@ def main():
         flask_thread = FlaskThread()
         flask_thread.start()
 
+    if check_sentinel("SocketSentinel"):
+        socket_thread = SocketThread()
+        socket_thread.start()
+
     # Set up the GPIO for the touch buttons and LED
     GPIO.setup(CAP_PIN, GPIO.IN)
     GPIO.setup(LED_PIN, GPIO.OUT)
@@ -2137,3 +2204,7 @@ if __name__ == "__main__":
         sendEnabledLock.acquire()
         sendEnabled = False
         sendEnabledLock.release()
+
+        socketEnabledLock.acquire()
+        socketEnabled = False
+        socketEnabledLock.release()
