@@ -112,6 +112,14 @@ parser = ConfigParser.SafeConfigParser()
 threads = []
 killWatch = False
 
+# Test variables for light thresholds which will need configs and locks
+lightMaxThreshold = 60  # More than when desk light is on so moving up closer will trigger
+lightMinThreshold = 20  # More than when the desk light is off so will trigger when light is turned off
+lightAboveThresholdCount = 0
+lightBelowThresholdCount = 0
+lightMaxThresholdTolerance = 2
+lightMinThresholdTolerance = 2
+
 # Board Pin Numbers
 INT_PIN = 11  # Ambient Light Sensor Interrupt - BCM 17
 LED_PIN = 12  # LED - BCM 18
@@ -379,7 +387,7 @@ class SocketThread(threading.Thread):
         self.threadID = 100
         self.name = "SocketThread"
         self.connected = False
-        self.host = '127.0.0.1'
+        self.host = '104.45.156.22'
         self.port = 8000
         self.repeat = check_sentinel("SocketSentinel")
         self.slept = 0
@@ -443,6 +451,22 @@ def update_light():
     lightLock.acquire()
     light = temp_light
     lightLock.release()
+    global lightMaxThreshold, lightMinThreshold, lightAboveThresholdCount, lightBelowThresholdCount, \
+        lightMaxThresholdTolerance, lightMinThresholdTolerance
+    if temp_light > lightMaxThreshold:
+        lightAboveThresholdCount += 1
+    elif temp_light <= lightMaxThreshold:
+        lightAboveThresholdCount = 0
+    if temp_light < lightMinThreshold:
+        lightBelowThresholdCount += 1
+    elif temp_light >= lightMinThreshold:
+        lightBelowThresholdCount = 0
+    if lightAboveThresholdCount == lightMaxThresholdTolerance:
+        print("Sending IFTTT SensorianLightAboveMax")
+        ifttt_sender("SensorianLightAboveMax")
+    if lightBelowThresholdCount == lightMinThresholdTolerance:
+        print("Sending IFTTT SensorianLightBelowMin")
+        ifttt_sender("SensorianLightBelowMin")
 
 
 # Get the most recent update of the light level when safe
