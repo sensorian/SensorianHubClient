@@ -70,6 +70,7 @@ buttonEnabled = True
 sendEnabled = False
 flaskEnabled = True
 socketEnabled = True
+magnetEnabled = True
 
 # Global sensor/IP variables protected by locks below if required
 currentDateTime = RT_CLOCK.RTCC_Struct(0, 0, 0, 1, 1, 1, 2016)
@@ -111,14 +112,18 @@ menuPosition = 0
 parser = ConfigParser.SafeConfigParser()
 threads = []
 killWatch = False
+magnetX = 0
+magnetY = 0
+magnetZ = 0
+magnetInterval = 1
 
 # Test variables for light thresholds which will need configs and locks
-lightMaxThreshold = 60  # More than when desk light is on so moving up closer will trigger
-lightMinThreshold = 20  # More than when the desk light is off so will trigger when light is turned off
-lightAboveThresholdCount = 0
-lightBelowThresholdCount = 0
-lightMaxThresholdTolerance = 2
-lightMinThresholdTolerance = 2
+lightMaxThreshold = 45  # Upper range to keep the light level within
+lightMinThreshold = 40  # Lower range to keep the light level within
+lightAboveThresholdCount = 0  # How many update cycles the light level has been above the threshold
+lightBelowThresholdCount = 0  # How many update cycles the light level has been below the threshold
+lightMaxThresholdTolerance = 3  # How many cycles the light level must be above the threshold to trigger an event
+lightMinThresholdTolerance = 3  # How many cycles the light level must be below the threshold to trigger an event
 
 # Board Pin Numbers
 INT_PIN = 11  # Ambient Light Sensor Interrupt - BCM 17
@@ -182,6 +187,11 @@ lightIntervalLock = threading.Lock()
 accelIntervalLock = threading.Lock()
 cpuTempIntervalLock = threading.Lock()
 socketEnabledLock = threading.Lock()
+magnetXLock = threading.Lock()
+magnetYLock = threading.Lock()
+magnetZLock = threading.Lock()
+magnetIntervalLock = threading.Lock()
+magnetEnabledLock = threading.Lock()
 
 app = Flask(__name__)
 api = Api(app)
@@ -418,7 +428,8 @@ class SocketThread(threading.Thread):
                                 if set_temp:
                                     print("Updated " + data[0:colon] + " to " + get_config_value(data[0:colon]))
                                 else:
-                                    print("Did not update " + data[0:colon] + ", stays " + get_config_value(data[0:colon]))
+                                    print("Did not update " + data[0:colon] + ", stays " + get_config_value(
+                                        data[0:colon]))
                             else:
                                 print("Did not find variable named " + data[0:colon])
                         except ValueError:
@@ -462,11 +473,38 @@ def update_light():
     elif temp_light >= lightMinThreshold:
         lightBelowThresholdCount = 0
     if lightAboveThresholdCount == lightMaxThresholdTolerance:
-        print("Sending IFTTT SensorianLightAboveMax")
-        ifttt_sender("SensorianLightAboveMax")
+        # print("Sending IFTTT SensorianLightAboveMax")
+        # ifttt_sender("SensorianLightAboveMax")
+        if temp_light >= lightMaxThreshold + 5:
+            print("Sending Hue Down Brightness More")
+            increment_brightness(-50)
+            lightAboveThresholdCount = 0
+        elif temp_light >= lightMaxThreshold:
+            print("Sending Hue Down Brightness")
+            increment_brightness(-10)
+            lightAboveThresholdCount = 0
     if lightBelowThresholdCount == lightMinThresholdTolerance:
-        print("Sending IFTTT SensorianLightBelowMin")
-        ifttt_sender("SensorianLightBelowMin")
+        # print("Sending IFTTT SensorianLightBelowMin")
+        # ifttt_sender("SensorianLightBelowMin")
+        if temp_light <= lightMinThreshold - 5:
+            print("Sending Hue Up Brightness More")
+            increment_brightness(50)
+            lightBelowThresholdCount = 0
+        elif temp_light <= lightMinThreshold:
+            print("Sending Hue Up Brightness")
+            increment_brightness(10)
+            lightBelowThresholdCount = 0
+
+
+# Example function to increase the brightness of a local Philips Hue light
+def increment_brightness(inc_amount):
+    url = "http://10.124.7.66/api/fGMVqEtXos5209yhc8XceU34W89UwSDBXfJ-dugB/lights/2/state"
+    payload = {'bri_inc': inc_amount, 'transitiontime': 1}
+    try:
+        r = requests.put(url, data=json.dumps(payload), timeout=1)
+        print(r.text)  # For debugging POST requests
+    except:
+        print("PUT ERROR - Check connection and hue bridge")
 
 
 # Get the most recent update of the light level when safe
@@ -676,6 +714,36 @@ def update_accelerometer():
         I2CLock.release()
 
 
+# Update all the magnetometer related global variables when safe
+def update_magnetometer():
+    global magnetX
+    global magnetY
+    global magnetZ
+    I2CLock.acquire()
+    # If the magnetometer is ready, read the magnetic forces
+    if imuSensor.readStatusReg() & 0x80:
+        magnet_x, magnet_y, magnet_z = imuSensor.pollMagnetometer()
+        print("Magnetometer - X: " + str(magnet_x) + " Y: " + str(magnet_y) + " Z: " + str(magnet_z))
+        I2CLock.release()
+        # Store the various global variables when safe
+        magnetXLock.acquire()
+        magnetX = magnet_x
+        magnetXLock.release()
+        magnetYLock.acquire()
+        magnetY = magnet_y
+        magnetYLock.release()
+        magnetZLock.acquire()
+        magnetZ = magnet_z
+        magnetZLock.release()
+        # Check if the y value is above a certain threshold to indicate the door is closed
+        if magnet_y > 0:
+            print("Door closed")
+        elif magnet_y <= 0:
+            print("Door open")
+    else:
+        I2CLock.release()
+
+
 # Get the latest update of the orientation from the global when safe
 def get_mode():
     modeLock.acquire()
@@ -786,6 +854,10 @@ def check_sentinel(sentinel):
         socketEnabledLock.acquire()
         state = socketEnabled
         socketEnabledLock.release()
+    elif sentinel == "UpdateMagnetometer":
+        magnetEnabledLock.acquire()
+        state = magnetEnabled
+        magnetEnabledLock.release()
     else:
         state = False
     return state
@@ -794,7 +866,7 @@ def check_sentinel(sentinel):
 # Method for the threads to check if their sentinels have changed
 def set_sentinel(sentinel, state):
     global timeEnabled, ambientEnabled, lightEnabled, cpuEnabled, interfaceIPEnabled
-    global publicIPEnabled, accelEnabled, buttonEnabled, sendEnabled
+    global publicIPEnabled, accelEnabled, buttonEnabled, sendEnabled, magnetEnabled
     # Check the thread's method name against the statements to
     # find their respective sentinel variables
     if sentinel == "UpdateDateTime":
@@ -833,11 +905,14 @@ def set_sentinel(sentinel, state):
         sendEnabledLock.acquire()
         sendEnabled = state
         sendEnabledLock.release()
+    elif sentinel == "UpdateMagnetometer":
+        magnetEnabledLock.acquire()
+        magnetEnabled = state
+        magnetEnabledLock.release()
 
 
 # Example IFTTT integration to call a trigger on their Maker Channel when
 # a button is pressed
-
 def ifttt_sender(event_name):
     url = "https://maker.ifttt.com/trigger/" + event_name + "/with/key/" + "d9ip3mcBoqN1_UkP_SyUWnnmnAJapn7BK4WP-7esu29"
     # Make a POST request to the IFTTT maker channel URL using the event name
@@ -1828,6 +1903,7 @@ methods = {"UpdateDateTime": update_date_time,
            "UpdateAccelerometer": update_accelerometer,
            "UpdateButton": update_button,
            "SendValues": send_values,
+           "UpdateMagnetometer": update_magnetometer
            }
 
 
@@ -2124,6 +2200,7 @@ def main():
     reboot_thread("PublicIPThread", publicInterval, "UpdatePublicIP")
     reboot_thread("AccelThread", accelInterval, "UpdateAccelerometer")
     reboot_thread("SendThread", postInterval, "SendValues")
+    reboot_thread("MagnetThread", magnetInterval, "UpdateMagnetometer")
 
     flaskEnabledLock.acquire()
     temp_flask_enabled = flaskEnabled
@@ -2232,3 +2309,7 @@ if __name__ == "__main__":
         socketEnabledLock.acquire()
         socketEnabled = False
         socketEnabledLock.release()
+
+        magnetEnabledLock.acquire()
+        magnetEnabled = False
+        magnetEnabledLock.release()
