@@ -643,6 +643,7 @@ def get_watched_interface_ip():
 
 # Get the IP of the passed interface
 def get_interface_ip(interface):
+	# Create a socket to use to query the interface
     s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     # Try to get the IP of the passed interface
     try:
@@ -651,11 +652,13 @@ def get_interface_ip(interface):
             0x8915,  # SIOCGIFADDR
             struct.pack('256s', interface[:15])
         )[20:24])
-    # If it fails, return empty IP
-    except:
+    # If it fails, return an empty IP address
+    except IOError:
         ipaddr = "0.0.0.0"
+	# Close the socket whether an IP was found or not
     finally:
         s.close()
+	# Return the IP Address: Correct or Empty
     return ipaddr
 
 
