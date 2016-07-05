@@ -15,9 +15,9 @@ To summarize for experts, simply clone/download the repo wherever and run the in
 3. Run `sudo raspi-config` to your liking, remember that you can simply boot to console, no display required.  
 4. Be sure to enable the SPI and I2C interfaces in Advanced Options, and optionally SSH.   
 5. Download/clone the project to a directory by navigating to it and typing the following line  
-  * `git clone https://github.com/Gunsmithy/SensorianHubClient.git` 
+  * `git clone https://github.com/sensorian/SensorianHubClient.git` 
   * Or if you're feeling adventurous and want to run what is likely my broken development code, try this:  
-  * `git clone https://github.com/Gunsmithy/SensorianHubClient.git -b development --single-branch`
+  * `git clone https://github.com/sensorian/SensorianHubClient.git -b development --single-branch`
 6. Change into the new directory using `cd SensorianHubClient` then type `chmod +x install.sh`  
 7. Run `./install.sh` and wait for it to finish  
 8. When it is finally done installing dependencies, reboot the Pi with `sudo reboot`  
