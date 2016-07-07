@@ -68,8 +68,8 @@ accelEnabled = True
 pressureEnabled = True
 buttonEnabled = True
 sendEnabled = False
-flaskEnabled = True
-socketEnabled = True
+flaskEnabled = False
+socketEnabled = False
 magnetEnabled = True
 
 # Global sensor/IP variables protected by locks below if required
@@ -116,14 +116,6 @@ magnetX = 0
 magnetY = 0
 magnetZ = 0
 magnetInterval = 1
-
-# Test variables for light thresholds which will need configs and locks
-lightMaxThreshold = 45  # Upper range to keep the light level within
-lightMinThreshold = 40  # Lower range to keep the light level within
-lightAboveThresholdCount = 0  # How many update cycles the light level has been above the threshold
-lightBelowThresholdCount = 0  # How many update cycles the light level has been below the threshold
-lightMaxThresholdTolerance = 3  # How many cycles the light level must be above the threshold to trigger an event
-lightMinThresholdTolerance = 3  # How many cycles the light level must be below the threshold to trigger an event
 
 # Board Pin Numbers
 INT_PIN = 11  # Ambient Light Sensor Interrupt - BCM 17
@@ -402,13 +394,18 @@ class SocketThread(threading.Thread):
         self.repeat = check_sentinel("SocketSentinel")
         self.slept = 0
         self.keep_alive = 5
+        self.timeout = 5.0
 
     def run(self):
-        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         while self.repeat:
             if not self.connected:
-                s.connect((self.host, self.port))
-                self.connected = True
+                try:
+                    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                    s.settimeout(self.timeout)
+                    s.connect((self.host, self.port))
+                    self.connected = True
+                except socket.timeout:
+                    self.connected = False
             if self.slept >= self.keep_alive:
                 s.send("KeepAlive")
                 message = s.recv(1024)
@@ -462,49 +459,6 @@ def update_light():
     lightLock.acquire()
     light = temp_light
     lightLock.release()
-    global lightMaxThreshold, lightMinThreshold, lightAboveThresholdCount, lightBelowThresholdCount, \
-        lightMaxThresholdTolerance, lightMinThresholdTolerance
-    if temp_light > lightMaxThreshold:
-        lightAboveThresholdCount += 1
-    elif temp_light <= lightMaxThreshold:
-        lightAboveThresholdCount = 0
-    if temp_light < lightMinThreshold:
-        lightBelowThresholdCount += 1
-    elif temp_light >= lightMinThreshold:
-        lightBelowThresholdCount = 0
-    if lightAboveThresholdCount == lightMaxThresholdTolerance:
-        # print("Sending IFTTT SensorianLightAboveMax")
-        # ifttt_sender("SensorianLightAboveMax")
-        if temp_light >= lightMaxThreshold + 5:
-            print("Sending Hue Down Brightness More")
-            increment_brightness(-50)
-            lightAboveThresholdCount = 0
-        elif temp_light >= lightMaxThreshold:
-            print("Sending Hue Down Brightness")
-            increment_brightness(-10)
-            lightAboveThresholdCount = 0
-    if lightBelowThresholdCount == lightMinThresholdTolerance:
-        # print("Sending IFTTT SensorianLightBelowMin")
-        # ifttt_sender("SensorianLightBelowMin")
-        if temp_light <= lightMinThreshold - 5:
-            print("Sending Hue Up Brightness More")
-            increment_brightness(50)
-            lightBelowThresholdCount = 0
-        elif temp_light <= lightMinThreshold:
-            print("Sending Hue Up Brightness")
-            increment_brightness(10)
-            lightBelowThresholdCount = 0
-
-
-# Example function to increase the brightness of a local Philips Hue light
-def increment_brightness(inc_amount):
-    url = "http://10.124.7.66/api/fGMVqEtXos5209yhc8XceU34W89UwSDBXfJ-dugB/lights/2/state"
-    payload = {'bri_inc': inc_amount, 'transitiontime': 1}
-    try:
-        r = requests.put(url, data=json.dumps(payload), timeout=1)
-        print(r.text)  # For debugging POST requests
-    except:
-        print("PUT ERROR - Check connection and hue bridge")
 
 
 # Get the most recent update of the light level when safe
@@ -643,7 +597,7 @@ def get_watched_interface_ip():
 
 # Get the IP of the passed interface
 def get_interface_ip(interface):
-	# Create a socket to use to query the interface
+    # Create a socket to use to query the interface
     s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     # Try to get the IP of the passed interface
     try:
@@ -655,10 +609,10 @@ def get_interface_ip(interface):
     # If it fails, return an empty IP address
     except IOError:
         ipaddr = "0.0.0.0"
-	# Close the socket whether an IP was found or not
+    # Close the socket whether an IP was found or not
     finally:
         s.close()
-	# Return the IP Address: Correct or Empty
+    # Return the IP Address: Correct or Empty
     return ipaddr
 
 
@@ -719,9 +673,7 @@ def update_accelerometer():
 
 # Update all the magnetometer related global variables when safe
 def update_magnetometer():
-    global magnetX
-    global magnetY
-    global magnetZ
+    global magnetX, magnetY, magnetZ
     I2CLock.acquire()
     # If the magnetometer is ready, read the magnetic forces
     if imuSensor.readStatusReg() & 0x80:
@@ -745,6 +697,30 @@ def update_magnetometer():
             print("Door open")
     else:
         I2CLock.release()
+
+
+# Get the latest update of the X acceleration when safe
+def get_mag_x():
+    magnetXLock.acquire()
+    x = magnetX
+    magnetXLock.release()
+    return x
+
+
+# Get the latest update of the Y acceleration when safe
+def get_mag_y():
+    magnetYLock.acquire()
+    y = magnetY
+    magnetYLock.release()
+    return y
+
+
+# Get the latest update of the Z acceleration when safe
+def get_mag_z():
+    magnetZLock.acquire()
+    z = magnetZ
+    magnetZLock.release()
+    return z
 
 
 # Get the latest update of the orientation from the global when safe
@@ -868,8 +844,8 @@ def check_sentinel(sentinel):
 
 # Method for the threads to check if their sentinels have changed
 def set_sentinel(sentinel, state):
-    global timeEnabled, ambientEnabled, lightEnabled, cpuEnabled, interfaceIPEnabled
-    global publicIPEnabled, accelEnabled, buttonEnabled, sendEnabled, magnetEnabled
+    global timeEnabled, ambientEnabled, lightEnabled, cpuEnabled, interfaceIPEnabled, publicIPEnabled, \
+        accelEnabled, buttonEnabled, sendEnabled, socketEnabled, magnetEnabled
     # Check the thread's method name against the statements to
     # find their respective sentinel variables
     if sentinel == "UpdateDateTime":
@@ -908,23 +884,39 @@ def set_sentinel(sentinel, state):
         sendEnabledLock.acquire()
         sendEnabled = state
         sendEnabledLock.release()
+    elif sentinel == "SocketSentinel":
+        socketEnabledLock.acquire()
+        socketEnabled = state
+        socketEnabledLock.release()
     elif sentinel == "UpdateMagnetometer":
         magnetEnabledLock.acquire()
         magnetEnabled = state
         magnetEnabledLock.release()
 
 
-# Example IFTTT integration to call a trigger on their Maker Channel when
-# a button is pressed
-def ifttt_sender(event_name):
-    url = "https://maker.ifttt.com/trigger/" + event_name + "/with/key/" + "d9ip3mcBoqN1_UkP_SyUWnnmnAJapn7BK4WP-7esu29"
-    # Make a POST request to the IFTTT maker channel URL using the event name
-    # and API key provided in the config file, catching any failures
+# Sends a request to an IFTTT Maker Channel with the given key and event name
+def ifttt_trigger(key="xxxxxxxxxxxxxxxxxxxxxx", event="SensorianEvent", timeout=5, value1="", value2="", value3=""):
+    """Sends a request to an IFTTT Maker Channel with the given key and event name.
+
+    A valid IFTTT Maker Channel API key is required and can be obtained from https://ifttt.com/maker.
+    An event name is required to trigger a specific recipe created using the Maker Channel.
+    Extra values included in the JSON payload are optional, but can be used to tune the result of a recipe.
+    A timeout in seconds is optional, defaults to 5 seconds.
+    Interacts with ifttt.com. As with any Internet resource, please be respectful.
+    Ie. Don't trigger too frequently, that's not cool.
+    """
+    payload = {'value1': str(value1), 'value2': str(value2), 'value3': str(value3)}
+    url = "https://maker.ifttt.com/trigger/" + event + "/with/key/" + key
+    # Make a GET request to the IFTTT maker channel URL using the event name and key
     try:
-        r = requests.post(url, timeout=postTimeout)
-        print(r.text)  # For debugging POST requests
-    except:
-        print("POST ERROR - Check connection and server")
+        r = requests.post(url, data=payload, timeout=timeout)
+        print(r.text)  # For debugging GET requests
+    except requests.exceptions.ConnectionError:
+        print("IFTTT ERROR - requests.exceptions.ConnectionError - Check connection and server")
+    except requests.exceptions.InvalidSchema:
+        print("IFTTT ERROR - requests.exceptions.InvalidSchema - Check the URL")
+    except requests.exceptions.Timeout:
+        print("IFTTT TIMEOUT - requests.exceptions.Timeout - Please try again or check connection")
 
 
 def get_menu_elements():
@@ -958,9 +950,9 @@ def button_handler(pressed):
             set_menu_elements(topMenuElements)
             cursor_to_top()
         elif pressed == 1:
-            ifttt_sender("SensorianButton1")
+            ifttt_trigger(key=iftttKey, event="SensorianButton1", value1=get_serial())
         elif pressed == 3:
-            ifttt_sender("SensorianButton3")
+            ifttt_trigger(key=iftttKey, event="SensorianButton3", value1=get_serial())
     else:
         print("Menu Pressed " + str(pressed))
         currentMenuLock.acquire()
@@ -2188,8 +2180,7 @@ def write_config():
         os.system("chmod 777 client.cfg")
 
 
-# Main Method
-def main():
+def setup():
     # CPU serial shouldn't change so it is only updated once
     update_serial()
 
@@ -2226,6 +2217,9 @@ def main():
     CapTouch.clearInterrupt()
     CapTouch.enableInterrupt(0, 0, 0x07)
 
+
+# Main Method
+def main():
     killWatchLock.acquire()
     temp_kill_watch = killWatch
     killWatchLock.release()
@@ -2255,64 +2249,37 @@ def main():
         killWatchLock.release()
 
 
+def cleanup():
+    kill_flask()
+
+    GPIO.cleanup()
+
+    write_config()
+
+    set_sentinel("UpdateDateTime", False)
+    set_sentinel("UpdateAmbient", False)
+    set_sentinel("UpdateLight", False)
+    set_sentinel("UpdateAccelerometer", False)
+    set_sentinel("UpdateCPUTemp", False)
+    set_sentinel("UpdateWatchedInterfaceIP", False)
+    set_sentinel("UpdatePublicIP", False)
+    set_sentinel("UpdateButton", False)
+    set_sentinel("SendValues", False)
+    set_sentinel("UpdateMagnetometer", False)
+    set_sentinel("SocketSentinel", False)
+
+
 # Assuming this program is run itself, execute normally
 if __name__ == "__main__":
     # Initialize variables once by reading or creating the config file
     config()
     # Run the main method, halting on keyboard interrupt if run from console
     try:
+        setup()
         main()
     except KeyboardInterrupt:
         print("...Quitting ...")
     # Tell all threads to stop if the main program stops by setting their
     # respective repeat sentinels to False
     finally:
-        kill_flask()
-
-        GPIO.cleanup()
-
-        write_config()
-
-        timeEnabledLock.acquire()
-        timeEnabled = False
-        timeEnabledLock.release()
-
-        ambientEnabledLock.acquire()
-        ambientEnabled = False
-        ambientEnabledLock.release()
-
-        lightEnabledLock.acquire()
-        lightEnabled = False
-        lightEnabledLock.release()
-
-        accelEnabledLock.acquire()
-        accelEnabled = False
-        accelEnabledLock.release()
-
-        cpuEnabledLock.acquire()
-        cpuEnabled = False
-        cpuEnabledLock.release()
-
-        interfaceIPEnabledLock.acquire()
-        interfaceIPEnabled = False
-        interfaceIPEnabledLock.release()
-
-        publicIPEnabledLock.acquire()
-        publicIPEnabled = False
-        publicIPEnabledLock.release()
-
-        buttonEnabledLock.acquire()
-        buttonEnabled = False
-        buttonEnabledLock.release()
-
-        sendEnabledLock.acquire()
-        sendEnabled = False
-        sendEnabledLock.release()
-
-        socketEnabledLock.acquire()
-        socketEnabled = False
-        socketEnabledLock.release()
-
-        magnetEnabledLock.acquire()
-        magnetEnabled = False
-        magnetEnabledLock.release()
+        cleanup()
