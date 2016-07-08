@@ -11,7 +11,7 @@ __maintainer__ = "Dylan Kauling"
 __status__ = "Development"
 
 # User defined variables for IFTTT.com/maker Channel API credentials and how long to wait for requests
-IFTTT_KEY = "d9ip3mcBoqN1_UkP_SyUWnnmnAJapn7BK4WP-7esu29"  # Your API key provided by IFTTT when connecting a Maker channel
+IFTTT_KEY = "YourIFTTTMakerChannelKey"  # Your API key provided by IFTTT when connecting a Maker channel
 IFTTT_EVENT = "HueBrightness"  # The name of the event you chose for the recipe to dim a Hue light
 IFTTT_TIMEOUT = 5  # How long to wait in seconds for commands sent to IFTTT.com before timing out
 TOLERANCE = 2.0   # How many times the lux levels per Hue brightness setting should be an acceptable range

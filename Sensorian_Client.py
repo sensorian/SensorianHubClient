@@ -37,9 +37,6 @@ while RTCNotReady:
     except:
         RTCNotReady = True
 
-# LightSensor needs C drivers to turn on
-# Currently just part of a cron job, might include here
-
 imuSensor = ACCEL_SENSOR.FXOS8700CQR1()
 imuSensor.configureAccelerometer()
 imuSensor.configureMagnetometer()
@@ -678,7 +675,6 @@ def update_magnetometer():
     # If the magnetometer is ready, read the magnetic forces
     if imuSensor.readStatusReg() & 0x80:
         magnet_x, magnet_y, magnet_z = imuSensor.pollMagnetometer()
-        print("Magnetometer - X: " + str(magnet_x) + " Y: " + str(magnet_y) + " Z: " + str(magnet_z))
         I2CLock.release()
         # Store the various global variables when safe
         magnetXLock.acquire()
@@ -690,11 +686,6 @@ def update_magnetometer():
         magnetZLock.acquire()
         magnetZ = magnet_z
         magnetZLock.release()
-        # Check if the y value is above a certain threshold to indicate the door is closed
-        if magnet_y > 0:
-            print("Door closed")
-        elif magnet_y <= 0:
-            print("Door open")
     else:
         I2CLock.release()
 
