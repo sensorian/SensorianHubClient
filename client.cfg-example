@@ -42,6 +42,22 @@ iftttkey = xxxxxxxxxxxxxxxxxxxxxx
 #The IFTTT Recipe event name to use for the Button 1 example
 iftttevent = SensorianEvent
 
+#Section pertaining to the remote reconfiguration of the Client, direct or relayed
+[RemoteConfig]
+#Boolean toggle to host a Flask REST API for receiving remote reconfiguration requests
+#Setting False while running will currently not stop the thread, need to send shutdown
+flaskenabled = True
+#The username used to authorize requests made to the client to change configurations
+configusername = configUsername
+#The password used to authorize requests made to the client to change configurations
+configpassword = configPassword
+#Boolean toggle to establish a socket with a relay server to wait for remote requests
+socketenabled = False
+#IP address or domain of the relay server on which to establish a socket
+relayaddress = 0.0.0.0
+#Port of the relay server on which to establish a socket
+relayport = 8000
+
 #Section pertaining to temperature and pressure sensor related values
 [Ambient]
 #Boolean toggle to periodically check the ambient temperature and pressure
@@ -64,3 +80,9 @@ accelenabled = True
 #How often to update the accelerometer and orientation in seconds
 accelinterval = 1
 
+#Section pertaining to magnetometer related values
+[Magnetometer]
+#Boolean toggle to periodically check the various axes of magnetic forces
+magnetenabled = True
+#How often to update the magnetic forces in seconds
+magnetinterval = 1

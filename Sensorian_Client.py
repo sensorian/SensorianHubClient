@@ -113,6 +113,10 @@ magnetX = 0
 magnetY = 0
 magnetZ = 0
 magnetInterval = 1
+configUsername = 'configUsername'
+configPassword = 'configPassword'
+relayAddress = "0.0.0.0"
+relayPort = 8000
 
 # Board Pin Numbers
 INT_PIN = 11  # Ambient Light Sensor Interrupt - BCM 17
@@ -181,6 +185,10 @@ magnetYLock = threading.Lock()
 magnetZLock = threading.Lock()
 magnetIntervalLock = threading.Lock()
 magnetEnabledLock = threading.Lock()
+relayAddressLock = threading.Lock()
+relayPortLock = threading.Lock()
+configUsernameLock = threading.Lock()
+configPasswordLock = threading.Lock()
 
 app = Flask(__name__)
 api = Api(app)
@@ -189,8 +197,8 @@ auth = HTTPBasicAuth()
 
 @auth.get_password
 def get_password(username):
-    if username == 'dylan':
-        return 'dylanrestpass'
+    if username == configUsername:
+        return configPassword
     return None
 
 
@@ -205,9 +213,7 @@ class ConfigListAPI(Resource):
 
     def get(self):
         config_list = get_all_config()
-        # for variable in config_list
         return {'variables': config_list}
-        # return {'variables': [marshal(variable, config_fields) for variable in _config_list]}
 
 
 class ConfigAPI(Resource):
@@ -386,8 +392,8 @@ class SocketThread(threading.Thread):
         self.threadID = 100
         self.name = "SocketThread"
         self.connected = False
-        self.host = '104.45.156.22'
-        self.port = 8000
+        self.host = get_config_value("relayaddress")
+        self.port = get_config_value("relayport")
         self.repeat = check_sentinel("SocketSentinel")
         self.slept = 0
         self.keep_alive = 5
@@ -807,7 +813,7 @@ def check_sentinel(sentinel):
         accelEnabledLock.acquire()
         state = accelEnabled
         accelEnabledLock.release()
-    elif sentinel == "UpdateButton":
+    elif sentinel == "ButtonEnabled":
         buttonEnabledLock.acquire()
         state = buttonEnabled
         buttonEnabledLock.release()
@@ -862,7 +868,7 @@ def set_sentinel(sentinel, state):
         accelEnabledLock.acquire()
         accelEnabled = state
         accelEnabledLock.release()
-    elif sentinel == "UpdateButton":
+    elif sentinel == "ButtonEnabled":
         buttonEnabledLock.acquire()
         buttonEnabled = state
         buttonEnabledLock.release()
@@ -920,7 +926,7 @@ def set_menu_elements(new_list):
 
 
 def button_handler(pressed):
-    if check_sentinel("UpdateButton"):
+    if check_sentinel("ButtonEnabled"):
         global inMenu
         global currentMenu
         global menuPosition
@@ -1417,6 +1423,22 @@ def get_config_value(name):
         accelIntervalLock.acquire()
         return_value = accelInterval
         accelIntervalLock.release()
+    elif name == "relayaddress":
+        relayAddressLock.acquire()
+        return_value = relayAddress
+        relayAddressLock.release()
+    elif name == "relayport":
+        relayPortLock.acquire()
+        return_value = relayPort
+        relayPortLock.release()
+    elif name == "configusername":
+        configUsernameLock.acquire()
+        return_value = configUsername
+        configUsernameLock.release()
+    elif name == "configpassword":
+        configPasswordLock.acquire()
+        return_value = configPassword
+        configPasswordLock.release()
     # If variable name wasn't found in the config, return this message
     else:
         return_value = "ConfigNotFound"
@@ -1429,7 +1451,8 @@ def set_config_value(name, value):
     succeeded = False
     global defaultOrientation, lockOrientation, sleepTime, displayEnabled, printEnabled, watchedInterface, \
         cpuTempInterval, interfaceInterval, publicInterval, sendEnabled, postInterval, postTimeout, serverURL, \
-        iftttKey, iftttEvent, ambientEnabled, ambientInterval, lightEnabled, lightInterval, accelEnabled, accelInterval
+        iftttKey, iftttEvent, ambientEnabled, ambientInterval, lightEnabled, lightInterval, accelEnabled, \
+        accelInterval, relayAddress, relayPort, configUsername, configPassword
     # UI Section
     if name == "defaultorientation":
         defaultOrientationLock.acquire()
@@ -1677,6 +1700,50 @@ def set_config_value(name, value):
             succeeded = False
         finally:
             accelIntervalLock.release()
+    elif name == "relayaddress":
+        relayAddressLock.acquire()
+        try:
+            relayAddress = value
+            parser.set('RemoteConfig', 'relayaddress', value)
+            succeeded = True
+        except TypeError:
+            succeeded = False
+        finally:
+            relayAddressLock.release()
+    elif name == "relayport":
+        relayPortLock.acquire()
+        try:
+            validate = int(value)
+            if 1 <= validate <= 65535:
+                relayPort = int(value)
+                parser.set('RemoteConfig', 'relayport', value)
+                succeeded = True
+            else:
+                succeeded = False
+        except TypeError:
+            succeeded = False
+        finally:
+            relayPortLock.release()
+    elif name == "configusername":
+        configUsernameLock.acquire()
+        try:
+            configUsername = value
+            parser.set('RemoteConfig', 'configusername', value)
+            succeeded = True
+        except TypeError:
+            succeeded = False
+        finally:
+            configUsernameLock.release()
+    elif name == "configpassword":
+        configPasswordLock.acquire()
+        try:
+            configPassword = value
+            parser.set('RemoteConfig', 'configpassword', value)
+            succeeded = True
+        except TypeError:
+            succeeded = False
+        finally:
+            configPasswordLock.release()
     return succeeded
 
 
@@ -1709,6 +1776,9 @@ def get_all_config():
     config_list.append({'name': "serverurl", 'value': get_config_value("serverurl")})
     config_list.append({'name': "iftttkey", 'value': get_config_value("iftttkey")})
     config_list.append({'name': "iftttevent", 'value': get_config_value("iftttevent")})
+    # Remote Config Section
+    config_list.append({'name': "relayaddress", 'value': get_config_value("relayaddress")})
+    config_list.append({'name': "relayport", 'value': get_config_value("relayport")})
     # Ambient Section
     config_list.append({'name': "ambientenabled", 'value': get_config_value("ambientenabled")})
     config_list.append({'name': "ambientinterval", 'value': get_config_value("ambientinterval")})
@@ -2151,6 +2221,102 @@ def config():
             parser.set('Requests', 'iftttevent', iftttEvent)
     finally:
         print("IFTTT Event: " + iftttEvent)
+
+    global flaskEnabled
+    try:
+        flaskEnabled = parser.getboolean('RemoteConfig', 'flaskenabled')
+    except (ConfigParser.NoSectionError, ConfigParser.NoOptionError, ValueError):
+        try:
+            parser.set('RemoteConfig', 'flaskenabled', str(flaskEnabled))
+        except ConfigParser.NoSectionError:
+            parser.add_section('RemoteConfig')
+            parser.set('RemoteConfig', 'flaskenabled', str(flaskEnabled))
+    finally:
+        print("Flask Enabled: " + str(flaskEnabled))
+
+    global socketEnabled
+    try:
+        socketEnabled = parser.getboolean('RemoteConfig', 'socketenabled')
+    except (ConfigParser.NoSectionError, ConfigParser.NoOptionError, ValueError):
+        try:
+            parser.set('RemoteConfig', 'socketenabled', str(socketEnabled))
+        except ConfigParser.NoSectionError:
+            parser.add_section('RemoteConfig')
+            parser.set('RemoteConfig', 'socketenabled', str(socketEnabled))
+    finally:
+        print("Socket Enabled: " + str(socketEnabled))
+
+    global relayAddress
+    try:
+        relayAddress = parser.get('RemoteConfig', 'relayaddress')
+    except (ConfigParser.NoSectionError, ConfigParser.NoOptionError, ValueError):
+        try:
+            parser.set('RemoteConfig', 'relayaddress', relayAddress)
+        except ConfigParser.NoSectionError:
+            parser.add_section('RemoteConfig')
+            parser.set('RemoteConfig', 'relayaddress', relayAddress)
+    finally:
+        print("Relay Address: " + relayAddress)
+
+    global relayPort
+    try:
+        relayPort = parser.get('RemoteConfig', 'relayport')
+    except (ConfigParser.NoSectionError, ConfigParser.NoOptionError, ValueError):
+        try:
+            parser.set('RemoteConfig', 'relayport', relayPort)
+        except ConfigParser.NoSectionError:
+            parser.add_section('RemoteConfig')
+            parser.set('RemoteConfig', 'relayport', relayPort)
+    finally:
+        print("Relay Port: " + relayPort)
+
+    global configUsername
+    try:
+        configUsername = parser.get('RemoteConfig', 'configusername')
+    except (ConfigParser.NoSectionError, ConfigParser.NoOptionError, ValueError):
+        try:
+            parser.set('RemoteConfig', 'configusername', configUsername)
+        except ConfigParser.NoSectionError:
+            parser.add_section('RemoteConfig')
+            parser.set('RemoteConfig', 'configusername', configUsername)
+    finally:
+        print("Config Username: " + configUsername)
+
+    global configPassword
+    try:
+        configPassword = parser.get('RemoteConfig', 'configpassword')
+    except (ConfigParser.NoSectionError, ConfigParser.NoOptionError, ValueError):
+        try:
+            parser.set('RemoteConfig', 'configpassword', configPassword)
+        except ConfigParser.NoSectionError:
+            parser.add_section('RemoteConfig')
+            parser.set('RemoteConfig', 'configpassword', configPassword)
+    finally:
+        print("Config Password: " + configPassword)
+
+    global magnetEnabled
+    try:
+        magnetEnabled = parser.getboolean('Magnetometer', 'magnetenabled')
+    except (ConfigParser.NoSectionError, ConfigParser.NoOptionError, ValueError):
+        try:
+            parser.set('Magnetometer', 'magnetenabled', str(magnetEnabled))
+        except ConfigParser.NoSectionError:
+            parser.add_section('Magnetometer')
+            parser.set('Magnetometer', 'magnetenabled', str(magnetEnabled))
+    finally:
+        print("Magnet Enabled: " + str(magnetEnabled))
+
+    global magnetInterval
+    try:
+        magnetInterval = parser.getfloat('Magnetometer', 'magnetinterval')
+    except (ConfigParser.NoSectionError, ConfigParser.NoOptionError, ValueError):
+        try:
+            parser.set('Magnetometer', 'magnetinterval', str(magnetInterval))
+        except ConfigParser.NoSectionError:
+            parser.add_section('Magnetometer')
+            parser.set('Magnetometer', 'magnetinterval', str(magnetInterval))
+    finally:
+        print("Magnetometer Interval: " + str(magnetInterval))
 
     # Write the config file back to disk with the given values and
     # filling in any blanks with the defaults
