@@ -37,9 +37,6 @@ while RTCNotReady:
     except:
         RTCNotReady = True
 
-# LightSensor needs C drivers to turn on
-# Currently just part of a cron job, might include here
-
 imuSensor = ACCEL_SENSOR.FXOS8700CQR1()
 imuSensor.configureAccelerometer()
 imuSensor.configureMagnetometer()
@@ -68,7 +65,9 @@ accelEnabled = True
 pressureEnabled = True
 buttonEnabled = True
 sendEnabled = False
-flaskEnabled = True
+flaskEnabled = False
+socketEnabled = False
+magnetEnabled = True
 
 # Global sensor/IP variables protected by locks below if required
 currentDateTime = RT_CLOCK.RTCC_Struct(0, 0, 0, 1, 1, 1, 2016)
@@ -110,6 +109,14 @@ menuPosition = 0
 parser = ConfigParser.SafeConfigParser()
 threads = []
 killWatch = False
+magnetX = 0
+magnetY = 0
+magnetZ = 0
+magnetInterval = 1
+configUsername = 'configUsername'
+configPassword = 'configPassword'
+relayAddress = "0.0.0.0"
+relayPort = 8000
 
 # Board Pin Numbers
 INT_PIN = 11  # Ambient Light Sensor Interrupt - BCM 17
@@ -172,6 +179,16 @@ ambientIntervalLock = threading.Lock()
 lightIntervalLock = threading.Lock()
 accelIntervalLock = threading.Lock()
 cpuTempIntervalLock = threading.Lock()
+socketEnabledLock = threading.Lock()
+magnetXLock = threading.Lock()
+magnetYLock = threading.Lock()
+magnetZLock = threading.Lock()
+magnetIntervalLock = threading.Lock()
+magnetEnabledLock = threading.Lock()
+relayAddressLock = threading.Lock()
+relayPortLock = threading.Lock()
+configUsernameLock = threading.Lock()
+configPasswordLock = threading.Lock()
 
 app = Flask(__name__)
 api = Api(app)
@@ -180,8 +197,8 @@ auth = HTTPBasicAuth()
 
 @auth.get_password
 def get_password(username):
-    if username == 'dylan':
-        return 'dylanrestpass'
+    if username == configUsername:
+        return configPassword
     return None
 
 
@@ -196,9 +213,7 @@ class ConfigListAPI(Resource):
 
     def get(self):
         config_list = get_all_config()
-        # for variable in config_list
         return {'variables': config_list}
-        # return {'variables': [marshal(variable, config_fields) for variable in _config_list]}
 
 
 class ConfigAPI(Resource):
@@ -367,7 +382,65 @@ class FlaskThread(threading.Thread):
 
     def run(self):
         run_flask()
-        print("Killing " + self.name)
+        print("Killing FlaskThread")
+
+
+class SocketThread(threading.Thread):
+    # Initializes a thread to run Flask
+    def __init__(self):
+        threading.Thread.__init__(self)
+        self.threadID = 100
+        self.name = "SocketThread"
+        self.connected = False
+        self.host = get_config_value("relayaddress")
+        self.port = get_config_value("relayport")
+        self.repeat = check_sentinel("SocketSentinel")
+        self.slept = 0
+        self.keep_alive = 5
+        self.timeout = 5.0
+
+    def run(self):
+        while self.repeat:
+            if not self.connected:
+                try:
+                    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                    s.settimeout(self.timeout)
+                    s.connect((self.host, self.port))
+                    self.connected = True
+                except socket.timeout:
+                    self.connected = False
+            if self.slept >= self.keep_alive:
+                s.send("KeepAlive")
+                message = s.recv(1024)
+                if message == "LIVE":
+                    print("LIVE Received")
+                elif message == "PREPARE":
+                    s.send("READY")
+                    data = s.recv(1024)
+                    if data == "CANCEL":
+                        print("CANCEL Received")
+                    elif data:
+                        try:
+                            colon = data.index(":")
+                            config_temp = get_config_value(data[0:colon])
+                            if config_temp != "ConfigNotFound":
+                                set_temp = set_config_value(data[0:colon], data[colon + 1:len(data) + 1])
+                                if set_temp:
+                                    print("Updated " + data[0:colon] + " to " + get_config_value(data[0:colon]))
+                                else:
+                                    print("Did not update " + data[0:colon] + ", stays " + get_config_value(
+                                        data[0:colon]))
+                            else:
+                                print("Did not find variable named " + data[0:colon])
+                        except ValueError:
+                            print("Malformed data received from socket")
+                self.slept = 0
+            elif self.slept < self.keep_alive:
+                self.slept += 1
+            self.repeat = check_sentinel("SocketSentinel")
+            time.sleep(1)
+        s.close()
+        print("Killing SocketThread")
 
 
 # Updates the global light variable
@@ -527,6 +600,7 @@ def get_watched_interface_ip():
 
 # Get the IP of the passed interface
 def get_interface_ip(interface):
+    # Create a socket to use to query the interface
     s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     # Try to get the IP of the passed interface
     try:
@@ -535,11 +609,13 @@ def get_interface_ip(interface):
             0x8915,  # SIOCGIFADDR
             struct.pack('256s', interface[:15])
         )[20:24])
-    # If it fails, return empty IP
-    except:
+    # If it fails, return an empty IP address
+    except IOError:
         ipaddr = "0.0.0.0"
+    # Close the socket whether an IP was found or not
     finally:
         s.close()
+    # Return the IP Address: Correct or Empty
     return ipaddr
 
 
@@ -598,6 +674,52 @@ def update_accelerometer():
         I2CLock.release()
 
 
+# Update all the magnetometer related global variables when safe
+def update_magnetometer():
+    global magnetX, magnetY, magnetZ
+    I2CLock.acquire()
+    # If the magnetometer is ready, read the magnetic forces
+    if imuSensor.readStatusReg() & 0x80:
+        magnet_x, magnet_y, magnet_z = imuSensor.pollMagnetometer()
+        I2CLock.release()
+        # Store the various global variables when safe
+        magnetXLock.acquire()
+        magnetX = magnet_x
+        magnetXLock.release()
+        magnetYLock.acquire()
+        magnetY = magnet_y
+        magnetYLock.release()
+        magnetZLock.acquire()
+        magnetZ = magnet_z
+        magnetZLock.release()
+    else:
+        I2CLock.release()
+
+
+# Get the latest update of the magnetic forces in the X direction when safe
+def get_mag_x():
+    magnetXLock.acquire()
+    x = magnetX
+    magnetXLock.release()
+    return x
+
+
+# Get the latest update of the magnetic forces in the Y direction when safe
+def get_mag_y():
+    magnetYLock.acquire()
+    y = magnetY
+    magnetYLock.release()
+    return y
+
+
+# Get the latest update of the magnetic forces in the Z direction when safe
+def get_mag_z():
+    magnetZLock.acquire()
+    z = magnetZ
+    magnetZLock.release()
+    return z
+
+
 # Get the latest update of the orientation from the global when safe
 def get_mode():
     modeLock.acquire()
@@ -628,11 +750,6 @@ def get_accel_z():
     z = accelZ
     accelZLock.release()
     return z
-
-
-# Update the latest button press to the global variable
-def update_button():
-    print("You Shouldn't Be Here...")
 
 
 # Update the button pressed when interrupted
@@ -696,7 +813,7 @@ def check_sentinel(sentinel):
         accelEnabledLock.acquire()
         state = accelEnabled
         accelEnabledLock.release()
-    elif sentinel == "UpdateButton":
+    elif sentinel == "ButtonEnabled":
         buttonEnabledLock.acquire()
         state = buttonEnabled
         buttonEnabledLock.release()
@@ -704,6 +821,14 @@ def check_sentinel(sentinel):
         sendEnabledLock.acquire()
         state = sendEnabled
         sendEnabledLock.release()
+    elif sentinel == "SocketSentinel":
+        socketEnabledLock.acquire()
+        state = socketEnabled
+        socketEnabledLock.release()
+    elif sentinel == "UpdateMagnetometer":
+        magnetEnabledLock.acquire()
+        state = magnetEnabled
+        magnetEnabledLock.release()
     else:
         state = False
     return state
@@ -711,8 +836,8 @@ def check_sentinel(sentinel):
 
 # Method for the threads to check if their sentinels have changed
 def set_sentinel(sentinel, state):
-    global timeEnabled, ambientEnabled, lightEnabled, cpuEnabled, interfaceIPEnabled
-    global publicIPEnabled, accelEnabled, buttonEnabled, sendEnabled
+    global timeEnabled, ambientEnabled, lightEnabled, cpuEnabled, interfaceIPEnabled, publicIPEnabled, \
+        accelEnabled, buttonEnabled, sendEnabled, socketEnabled, magnetEnabled
     # Check the thread's method name against the statements to
     # find their respective sentinel variables
     if sentinel == "UpdateDateTime":
@@ -743,7 +868,7 @@ def set_sentinel(sentinel, state):
         accelEnabledLock.acquire()
         accelEnabled = state
         accelEnabledLock.release()
-    elif sentinel == "UpdateButton":
+    elif sentinel == "ButtonEnabled":
         buttonEnabledLock.acquire()
         buttonEnabled = state
         buttonEnabledLock.release()
@@ -751,21 +876,39 @@ def set_sentinel(sentinel, state):
         sendEnabledLock.acquire()
         sendEnabled = state
         sendEnabledLock.release()
+    elif sentinel == "SocketSentinel":
+        socketEnabledLock.acquire()
+        socketEnabled = state
+        socketEnabledLock.release()
+    elif sentinel == "UpdateMagnetometer":
+        magnetEnabledLock.acquire()
+        magnetEnabled = state
+        magnetEnabledLock.release()
 
 
-# Example IFTTT integration to call a trigger on their Maker Channel when
-# a button is pressed
-'''
-def ButtonHandler():
-    url = "https://maker.ifttt.com/trigger/" + iftttEvent + "/with/key/" + iftttKey
-    # Make a POST request to the IFTTT maker channel URL using the event name
-    # and API key provided in the config file, catching any failures
+# Sends a request to an IFTTT Maker Channel with the given key and event name
+def ifttt_trigger(key="xxxxxxxxxxxxxxxxxxxxxx", event="SensorianEvent", timeout=5, value1="", value2="", value3=""):
+    """Sends a request to an IFTTT Maker Channel with the given key and event name.
+
+    A valid IFTTT Maker Channel API key is required and can be obtained from https://ifttt.com/maker.
+    An event name is required to trigger a specific recipe created using the Maker Channel.
+    Extra values included in the JSON payload are optional, but can be used to tune the result of a recipe.
+    A timeout in seconds is optional, defaults to 5 seconds.
+    Interacts with ifttt.com. As with any Internet resource, please be respectful.
+    Ie. Don't trigger too frequently, that's not cool.
+    """
+    payload = {'value1': str(value1), 'value2': str(value2), 'value3': str(value3)}
+    url = "https://maker.ifttt.com/trigger/" + event + "/with/key/" + key
+    # Make a GET request to the IFTTT maker channel URL using the event name and key
     try:
-        r = requests.post(url, timeout=postTimeout)
-        # print r.text #For debugging POST requests
-    except:
-        print "POST ERROR - Check connection and server"
-'''
+        r = requests.post(url, data=payload, timeout=timeout)
+        print(r.text)  # For debugging GET requests
+    except requests.exceptions.ConnectionError:
+        print("IFTTT ERROR - requests.exceptions.ConnectionError - Check connection and server")
+    except requests.exceptions.InvalidSchema:
+        print("IFTTT ERROR - requests.exceptions.InvalidSchema - Check the URL")
+    except requests.exceptions.Timeout:
+        print("IFTTT TIMEOUT - requests.exceptions.Timeout - Please try again or check connection")
 
 
 def get_menu_elements():
@@ -783,354 +926,359 @@ def set_menu_elements(new_list):
 
 
 def button_handler(pressed):
-    global inMenu
-    global currentMenu
-    global menuPosition
-    inMenuLock.acquire()
-    temp_in_menu = inMenu
-    inMenuLock.release()
-    if not temp_in_menu:
-        print("Display Pressed " + str(pressed))
-        if pressed == 2:
-            inMenuLock.acquire()
-            inMenu = True
-            inMenuLock.release()
-            change_menu("Top")
-            set_menu_elements(topMenuElements)
-            cursor_to_top()
-    else:
-        print("Menu Pressed " + str(pressed))
-        currentMenuLock.acquire()
-        temp_menu = currentMenu
-        currentMenuLock.release()
-        temp_elements = get_menu_elements()
-        temp_length = len(temp_elements)
-        menuPositionLock.acquire()
-        temp_menu_pos = menuPosition
-        menuPositionLock.release()
-        if pressed == 1:
-            if temp_menu_pos == 0:
-                menuPositionLock.acquire()
-                menuPosition = temp_length - 1
-                menuPositionLock.release()
-            elif temp_menu_pos != 0:
-                menuPositionLock.acquire()
-                menuPosition = temp_menu_pos - 1
-                menuPositionLock.release()
-        elif pressed == 3:
-            if temp_menu_pos == temp_length - 1:
+    if check_sentinel("ButtonEnabled"):
+        global inMenu
+        global currentMenu
+        global menuPosition
+        inMenuLock.acquire()
+        temp_in_menu = inMenu
+        inMenuLock.release()
+        if not temp_in_menu:
+            print("Display Pressed " + str(pressed))
+            if pressed == 2:
+                inMenuLock.acquire()
+                inMenu = True
+                inMenuLock.release()
+                change_menu("Top")
+                set_menu_elements(topMenuElements)
                 cursor_to_top()
-            elif temp_menu_pos != temp_length - 1:
-                menuPositionLock.acquire()
-                menuPosition = temp_menu_pos + 1
-                menuPositionLock.release()
-        # If the middle button was pressed, check the menu it was in
-        elif pressed == 2:
-            # If it was the top menu, which menu option was selected
-            if temp_menu == "Top":
-                # If Exit was selected, close the menu
-                if temp_elements[temp_menu_pos] == "Exit":
+            elif pressed == 1:
+                ifttt_trigger(key=iftttKey, event="SensorianButton1", value1=get_serial())
+            elif pressed == 3:
+                ifttt_trigger(key=iftttKey, event="SensorianButton3", value1=get_serial())
+        else:
+            print("Menu Pressed " + str(pressed))
+            currentMenuLock.acquire()
+            temp_menu = currentMenu
+            currentMenuLock.release()
+            temp_elements = get_menu_elements()
+            temp_length = len(temp_elements)
+            menuPositionLock.acquire()
+            temp_menu_pos = menuPosition
+            menuPositionLock.release()
+            if pressed == 1:
+                if temp_menu_pos == 0:
+                    menuPositionLock.acquire()
+                    menuPosition = temp_length - 1
+                    menuPositionLock.release()
+                elif temp_menu_pos != 0:
+                    menuPositionLock.acquire()
+                    menuPosition = temp_menu_pos - 1
+                    menuPositionLock.release()
+            elif pressed == 3:
+                if temp_menu_pos == temp_length - 1:
+                    cursor_to_top()
+                elif temp_menu_pos != temp_length - 1:
+                    menuPositionLock.acquire()
+                    menuPosition = temp_menu_pos + 1
+                    menuPositionLock.release()
+            # If the middle button was pressed, check the menu it was in
+            elif pressed == 2:
+                # If it was the top menu, which menu option was selected
+                if temp_menu == "Top":
+                    # If Exit was selected, close the menu
+                    if temp_elements[temp_menu_pos] == "Exit":
+                        close_menu()
+                    # If General was selected, go into that sub-menu
+                    elif temp_elements[temp_menu_pos] == "General":
+                        change_menu("General")
+                        set_menu_elements(["Back", "Watched Interface", "CPU Temp Interval", "Interface Interval",
+                                           "Public Interval"])
+                        cursor_to_top()
+                    # If UI was selected, go into that sub-menu
+                    elif temp_elements[temp_menu_pos] == "UI":
+                        change_menu("UI")
+                        set_menu_elements(["Back", "Default Orientation", "Lock Orientation", "Refresh Interval",
+                                           "Display Enabled", "Print Enabled"])
+                        cursor_to_top()
+                    # If Requests was selected, go into that sub-menu
+                    elif temp_elements[temp_menu_pos] == "Requests":
+                        change_menu("Requests")
+                        set_menu_elements(["Back", "POST Enabled", "POST Interval", "POST Timeout", "Server URL",
+                                           "IFTTT Key", "IFTTT Event"])
+                        cursor_to_top()
+                    # If Ambient was selected, go into that sub-menu
+                    elif temp_elements[temp_menu_pos] == "Ambient":
+                        change_menu("Ambient")
+                        set_menu_elements(["Back", "Ambient Enabled", "Ambient Interval"])
+                        cursor_to_top()
+                    # If Light was selected, go into that sub-menu
+                    elif temp_elements[temp_menu_pos] == "Light":
+                        change_menu("Light")
+                        set_menu_elements(["Back", "Light Enabled", "Light Interval"])
+                        cursor_to_top()
+                    # If Accelerometer was selected, go into that sub-menu
+                    elif temp_elements[temp_menu_pos] == "Accelerometer":
+                        change_menu("Accelerometer")
+                        set_menu_elements(["Back", "Accel Enabled", "Accel Interval"])
+                        cursor_to_top()
+                    # If System was selected, go into that sub-menu
+                    elif temp_elements[temp_menu_pos] == "System":
+                        change_menu("System")
+                        set_menu_elements(["Back", "Shutdown", "Reboot", "Kill Program"])
+                        cursor_to_top()
+                # If we are in the general sub-menu already, which one of these options was selected
+                elif temp_menu == "General":
+                    # If Back was selected, return to the Top menu
+                    if temp_elements[temp_menu_pos] == "Back":
+                        change_menu("Top")
+                        set_menu_elements(topMenuElements)
+                        cursor_to_top()
+                    # If Watched Interface was selected, go into that sub-menu
+                    elif temp_elements[temp_menu_pos] == "Watched Interface":
+                        change_menu("Watched Interface")
+                        # Get the list of watchable interfaces before pulling up the menu
+                        proc = subprocess.Popen(["ls", "-1", "/sys/class/net"], stdout=subprocess.PIPE)
+                        (out, err) = proc.communicate()
+                        interfaces = out.rstrip()
+                        interfaces_list = interfaces.split()
+                        set_menu_elements(interfaces_list)
+                        cursor_to_top()
+                    # If CPU Temp Interval was selected, go into that sub-menu
+                    elif temp_elements[temp_menu_pos] == "CPU Temp Interval":
+                        change_menu("CPU Temp Interval")
+                        # Prepare a list of possible quick options for the interval
+                        set_menu_elements(['1', '2', '3', '4', '5', '10', '15', '20', '30', '60'])
+                        cursor_to_top()
+                    # If Interface Interval was selected, go into that sub-menu
+                    elif temp_elements[temp_menu_pos] == "Interface Interval":
+                        change_menu("Interface Interval")
+                        # Prepare a list of possible quick options for the interval
+                        set_menu_elements(['1', '2', '3', '4', '5', '10', '15', '20', '30', '60'])
+                        cursor_to_top()
+                    # If Public Interval was selected, go into that sub-menu
+                    elif temp_elements[temp_menu_pos] == "Public Interval":
+                        change_menu("Public Interval")
+                        # Prepare a list of possible quick options for the interval
+                        set_menu_elements(['10', '15', '20', '30', '60', '120', '240', '360', '480', '600'])
+                        cursor_to_top()
+                # If an option was selected in the Watched Interface menu, update the config parser with the new value
+                # as well as the global variable, no need to reboot the thread as it checks which interface each time
+                elif temp_menu == "Watched Interface":
+                    new_interface = temp_elements[temp_menu_pos]
+                    set_config_value('watchedinterface', new_interface)
                     close_menu()
-                # If General was selected, go into that sub-menu
-                elif temp_elements[temp_menu_pos] == "General":
-                    change_menu("General")
-                    set_menu_elements(["Back", "Watched Interface", "CPU Temp Interval", "Interface Interval",
-                                       "Public Interval"])
-                    cursor_to_top()
-                # If UI was selected, go into that sub-menu
-                elif temp_elements[temp_menu_pos] == "UI":
-                    change_menu("UI")
-                    set_menu_elements(["Back", "Default Orientation", "Lock Orientation", "Refresh Interval",
-                                       "Display Enabled", "Print Enabled"])
-                    cursor_to_top()
-                # If Requests was selected, go into that sub-menu
-                elif temp_elements[temp_menu_pos] == "Requests":
-                    change_menu("Requests")
-                    set_menu_elements(["Back", "POST Enabled", "POST Interval", "POST Timeout", "Server URL",
-                                       "IFTTT Key", "IFTTT Event"])
-                    cursor_to_top()
-                # If Ambient was selected, go into that sub-menu
-                elif temp_elements[temp_menu_pos] == "Ambient":
-                    change_menu("Ambient")
-                    set_menu_elements(["Back", "Ambient Enabled", "Ambient Interval"])
-                    cursor_to_top()
-                # If Light was selected, go into that sub-menu
-                elif temp_elements[temp_menu_pos] == "Light":
-                    change_menu("Light")
-                    set_menu_elements(["Back", "Light Enabled", "Light Interval"])
-                    cursor_to_top()
-                # If Accelerometer was selected, go into that sub-menu
-                elif temp_elements[temp_menu_pos] == "Accelerometer":
-                    change_menu("Accelerometer")
-                    set_menu_elements(["Back", "Accel Enabled", "Accel Interval"])
-                    cursor_to_top()
-                # If System was selected, go into that sub-menu
-                elif temp_elements[temp_menu_pos] == "System":
-                    change_menu("System")
-                    set_menu_elements(["Back", "Shutdown", "Reboot", "Kill Program"])
-                    cursor_to_top()
-            # If we are in the general sub-menu already, which one of these options was selected
-            elif temp_menu == "General":
-                # If Back was selected, return to the Top menu
-                if temp_elements[temp_menu_pos] == "Back":
-                    change_menu("Top")
-                    set_menu_elements(topMenuElements)
-                    cursor_to_top()
-                # If Watched Interface was selected, go into that sub-menu
-                elif temp_elements[temp_menu_pos] == "Watched Interface":
-                    change_menu("Watched Interface")
-                    # Get the list of watchable interfaces before pulling up the menu
-                    proc = subprocess.Popen(["ls", "-1", "/sys/class/net"], stdout=subprocess.PIPE)
-                    (out, err) = proc.communicate()
-                    interfaces = out.rstrip()
-                    interfaces_list = interfaces.split()
-                    set_menu_elements(interfaces_list)
-                    cursor_to_top()
-                # If CPU Temp Interval was selected, go into that sub-menu
-                elif temp_elements[temp_menu_pos] == "CPU Temp Interval":
-                    change_menu("CPU Temp Interval")
-                    # Prepare a list of possible quick options for the interval
-                    set_menu_elements(['1', '2', '3', '4', '5', '10', '15', '20', '30', '60'])
-                    cursor_to_top()
-                # If Interface Interval was selected, go into that sub-menu
-                elif temp_elements[temp_menu_pos] == "Interface Interval":
-                    change_menu("Interface Interval")
-                    # Prepare a list of possible quick options for the interval
-                    set_menu_elements(['1', '2', '3', '4', '5', '10', '15', '20', '30', '60'])
-                    cursor_to_top()
-                # If Public Interval was selected, go into that sub-menu
-                elif temp_elements[temp_menu_pos] == "Public Interval":
-                    change_menu("Public Interval")
-                    # Prepare a list of possible quick options for the interval
-                    set_menu_elements(['10', '15', '20', '30', '60', '120', '240', '360', '480', '600'])
-                    cursor_to_top()
-            # If an option was selected in the Watched Interface menu, update the config parser with the new value
-            # as well as the global variable, no need to reboot the thread as it checks which interface each time
-            elif temp_menu == "Watched Interface":
-                new_interface = temp_elements[temp_menu_pos]
-                set_config_value('watchedinterface', new_interface)
-                close_menu()
-            # If an option was selected in the following menus, update the config parser with the new value
-            # to be written on close and reboot the respective monitoring thread with the new value
-            elif temp_menu == "CPU Temp Interval":
-                new_temp_interval = temp_elements[temp_menu_pos]
-                set_config_value('cputempinterval', new_temp_interval)
-                close_menu()
-            elif temp_menu == "Interface Interval":
-                new_interface_interval = temp_elements[temp_menu_pos]
-                set_config_value('interfaceinterval', new_interface_interval)
-                close_menu()
-            elif temp_menu == "Public Interval":
-                new_public_interval = temp_elements[temp_menu_pos]
-                set_config_value('publicinterval', new_public_interval)
-                close_menu()
-            # If we are in the UI sub-menu already, which one of these options was selected
-            elif temp_menu == "UI":
-                # If Back was selected, return to the Top menu
-                if temp_elements[temp_menu_pos] == "Back":
-                    change_menu("Top")
-                    set_menu_elements(topMenuElements)
-                    cursor_to_top()
-                # If Default Orientation was selected, go into that sub-menu
-                elif temp_elements[temp_menu_pos] == "Default Orientation":
-                    change_menu("Default Orientation")
-                    # Prepare a list of possible quick options for the orientation
-                    set_menu_elements(["0 = Landscape Left", "1 = Landscape Right",
-                                       "2 = Portrait Up", "3 = Portrait Down"])
-                    cursor_to_top()
-                # If Lock Orientation was selected, go into that sub-menu
-                elif temp_elements[temp_menu_pos] == "Lock Orientation":
-                    change_menu("Lock Orientation")
-                    # Can only be True or False
-                    set_menu_elements(['True', 'False'])
-                    cursor_to_top()
-                # If Refresh Interval was selected, go into that sub-menu
-                elif temp_elements[temp_menu_pos] == "Refresh Interval":
-                    change_menu("Refresh Interval")
-                    # Prepare a list of possible quick options for the interval
-                    set_menu_elements(['0.1', '0.25', '0.5', '0.75', '1', '1.5', '2', '2.5', '5', '10'])
-                    cursor_to_top()
-                # If Display Enabled was selected, go into that sub-menu
-                elif temp_elements[temp_menu_pos] == "Display Enabled":
-                    change_menu("Display Enabled")
-                    # Can only be True or False
-                    set_menu_elements(['True', 'False'])
-                    cursor_to_top()
-                # If Print Enabled was selected, go into that sub-menu
-                elif temp_elements[temp_menu_pos] == "Print Enabled":
-                    change_menu("Print Enabled")
-                    # Can only be True or False
-                    set_menu_elements(['True', 'False'])
-                    cursor_to_top()
-            elif temp_menu == "Default Orientation":
-                new_orientation_string = temp_elements[temp_menu_pos]
-                new_orientation_sub = new_orientation_string[0]
-                set_config_value('defaultorientation', new_orientation_sub)
-                close_menu()
-            elif temp_menu == "Lock Orientation":
-                new_lock_orientation = temp_elements[temp_menu_pos]
-                set_config_value('lockorientation', new_lock_orientation)
-                close_menu()
-            elif temp_menu == "Refresh Interval":
-                new_refresh_interval = temp_elements[temp_menu_pos]
-                set_config_value('refreshinterval', new_refresh_interval)
-                close_menu()
-            elif temp_menu == "Display Enabled":
-                new_display_enabled = temp_elements[temp_menu_pos]
-                set_config_value('displayenabled', new_display_enabled)
-                close_menu()
-            elif temp_menu == "Print Enabled":
-                new_print_enabled = temp_elements[temp_menu_pos]
-                set_config_value('printenabled', new_print_enabled)
-                close_menu()
-            # If we are in the Requests sub-menu already, which one of these options was selected
-            elif temp_menu == "Requests":
-                # If Back was selected, return to the Top menu
-                if temp_elements[temp_menu_pos] == "Back":
-                    change_menu("Top")
-                    set_menu_elements(topMenuElements)
-                    cursor_to_top()
-                # If POST Enabled was selected, go into that sub-menu
-                elif temp_elements[temp_menu_pos] == "POST Enabled":
-                    change_menu("POST Enabled")
-                    # Can only be True or False
-                    set_menu_elements(['True', 'False'])
-                    cursor_to_top()
-                # If POST Interval was selected, go into that sub-menu
-                elif temp_elements[temp_menu_pos] == "POST Interval":
-                    change_menu("POST Interval")
-                    # Prepare a list of possible quick options for the orientation
-                    set_menu_elements(['1', '2', '3', '4', '5', '10', '15', '20', '30', '60'])
-                    cursor_to_top()
-                # If POST Timeout was selected, go into that sub-menu
-                elif temp_elements[temp_menu_pos] == "POST Timeout":
-                    change_menu("POST Interval")
-                    # Prepare a list of possible quick options for the orientation
-                    set_menu_elements(['1', '2', '3', '4', '5', '10', '15', '20', '30', '60'])
-                    cursor_to_top()
-            elif temp_menu == "POST Enabled":
-                new_send_enabled = temp_elements[temp_menu_pos]
-                set_config_value('sendenabled', new_send_enabled)
-                close_menu()
-            elif temp_menu == "POST Interval":
-                new_post_interval = temp_elements[temp_menu_pos]
-                set_config_value('postinterval', new_post_interval)
-                close_menu()
-            elif temp_menu == "POST Timeout":
-                new_post_timeout = temp_elements[temp_menu_pos]
-                set_config_value('posttimeout', new_post_timeout)
-                close_menu()
-            # If we are in the Ambient sub-menu already, which one of these options was selected
-            elif temp_menu == "Ambient":
-                # If Back was selected, return to the Top menu
-                if temp_elements[temp_menu_pos] == "Back":
-                    change_menu("Top")
-                    set_menu_elements(topMenuElements)
-                    cursor_to_top()
-                # If Ambient Enabled was selected, go into that sub-menu
-                elif temp_elements[temp_menu_pos] == "Ambient Enabled":
-                    change_menu("Ambient Enabled")
-                    # Can only be True or False
-                    set_menu_elements(['True', 'False'])
-                    cursor_to_top()
-                # If Ambient Interval was selected, go into that sub-menu
-                elif temp_elements[temp_menu_pos] == "Ambient Interval":
-                    change_menu("Ambient Interval")
-                    # Prepare a list of possible quick options for the orientation
-                    set_menu_elements(['1', '2', '3', '4', '5', '10', '15', '20', '30', '60'])
-                    cursor_to_top()
-            elif temp_menu == "Ambient Enabled":
-                new_ambient_enabled = temp_elements[temp_menu_pos]
-                set_config_value('ambientenabled', new_ambient_enabled)
-                close_menu()
-            elif temp_menu == "Ambient Interval":
-                new_ambient_interval = temp_elements[temp_menu_pos]
-                set_config_value('ambientinterval', new_ambient_interval)
-                close_menu()
-            # If we are in the Light sub-menu already, which one of these options was selected
-            elif temp_menu == "Light":
-                # If Back was selected, return to the Top menu
-                if temp_elements[temp_menu_pos] == "Back":
-                    change_menu("Top")
-                    set_menu_elements(topMenuElements)
-                    cursor_to_top()
-                # If Light Enabled was selected, go into that sub-menu
-                elif temp_elements[temp_menu_pos] == "Light Enabled":
-                    change_menu("Light Enabled")
-                    # Can only be True or False
-                    set_menu_elements(['True', 'False'])
-                    cursor_to_top()
-                # If Light Interval was selected, go into that sub-menu
-                elif temp_elements[temp_menu_pos] == "Light Interval":
-                    change_menu("Light Interval")
-                    # Prepare a list of possible quick options for the orientation
-                    set_menu_elements(['1', '2', '3', '4', '5', '10', '15', '20', '30', '60'])
-                    cursor_to_top()
-            elif temp_menu == "Light Interval":
-                new_light_interval = temp_elements[temp_menu_pos]
-                set_config_value('lightinterval', new_light_interval)
-                close_menu()
-            elif temp_menu == "Light Enabled":
-                global lightEnabled
-                new_light_enabled = temp_elements[temp_menu_pos]
-                parser.set('Light', 'lightenabled', str(new_light_enabled))
-                lightEnabledLock.acquire()
-                if new_light_enabled != lightEnabled:
-                    lightEnabled = new_light_enabled
-                    lightEnabledLock.release()
-                    if new_light_enabled:
-                        reboot_thread("LightThread", lightInterval, "UpdateLight")
-                elif new_light_enabled == lightEnabled:
-                    lightEnabledLock.release()
-                close_menu()
-            # If we are in the Accelerometer sub-menu already, which one of these options was selected
-            elif temp_menu == "Accelerometer":
-                # If Back was selected, return to the Top menu
-                if temp_elements[temp_menu_pos] == "Back":
-                    change_menu("Top")
-                    set_menu_elements(topMenuElements)
-                    cursor_to_top()
-                # If Accel Enabled was selected, go into that sub-menu
-                elif temp_elements[temp_menu_pos] == "Accel Enabled":
-                    change_menu("Accel Enabled")
-                    # Can only be True or False
-                    set_menu_elements(['True', 'False'])
-                    cursor_to_top()
-                # If Ambient Interval was selected, go into that sub-menu
-                elif temp_elements[temp_menu_pos] == "Accel Interval":
-                    change_menu("Accel Interval")
-                    # Prepare a list of possible quick options for the orientation
-                    set_menu_elements(['1', '2', '3', '4', '5', '10', '15', '20', '30', '60'])
-                    cursor_to_top()
-            elif temp_menu == "Accel Enabled":
-                new_accel_enabled = temp_elements[temp_menu_pos]
-                set_config_value('accelenabled', new_accel_enabled)
-                close_menu()
-            elif temp_menu == "Accel Interval":
-                new_accel_interval = temp_elements[temp_menu_pos]
-                set_config_value('accelinterval', new_accel_interval)
-                close_menu()
-            # If we are in the System sub-menu already, which one of these options was selected
-            elif temp_menu == "System":
-                global killWatch
-                # If Back was selected, return to the Top menu
-                if temp_elements[temp_menu_pos] == "Back":
-                    change_menu("Top")
-                    set_menu_elements(topMenuElements)
-                    cursor_to_top()
-                # If Shutdown was selected, shutdown the Raspberry Pi
-                elif temp_elements[temp_menu_pos] == "Shutdown":
-                    kill_program()
-                    # Gives the program 5 seconds to wrap things up before shutting down
-                    os.system("sudo shutdown -h -t 5")
-                # If Reboot was selected, reboot the Raspberry Pi
-                elif temp_elements[temp_menu_pos] == "Reboot":
-                    kill_program()
-                    # Gives the program 5 seconds to wrap things up before rebooting
-                    os.system("sudo shutdown -r -t 5")
-                # If Kill Program was selected, terminate the program
-                elif temp_elements[temp_menu_pos] == "Kill Program":
-                    kill_program()
+                # If an option was selected in the following menus, update the config parser with the new value
+                # to be written on close and reboot the respective monitoring thread with the new value
+                elif temp_menu == "CPU Temp Interval":
+                    new_temp_interval = temp_elements[temp_menu_pos]
+                    set_config_value('cputempinterval', new_temp_interval)
+                    close_menu()
+                elif temp_menu == "Interface Interval":
+                    new_interface_interval = temp_elements[temp_menu_pos]
+                    set_config_value('interfaceinterval', new_interface_interval)
+                    close_menu()
+                elif temp_menu == "Public Interval":
+                    new_public_interval = temp_elements[temp_menu_pos]
+                    set_config_value('publicinterval', new_public_interval)
+                    close_menu()
+                # If we are in the UI sub-menu already, which one of these options was selected
+                elif temp_menu == "UI":
+                    # If Back was selected, return to the Top menu
+                    if temp_elements[temp_menu_pos] == "Back":
+                        change_menu("Top")
+                        set_menu_elements(topMenuElements)
+                        cursor_to_top()
+                    # If Default Orientation was selected, go into that sub-menu
+                    elif temp_elements[temp_menu_pos] == "Default Orientation":
+                        change_menu("Default Orientation")
+                        # Prepare a list of possible quick options for the orientation
+                        set_menu_elements(["0 = Landscape Left", "1 = Landscape Right",
+                                           "2 = Portrait Up", "3 = Portrait Down"])
+                        cursor_to_top()
+                    # If Lock Orientation was selected, go into that sub-menu
+                    elif temp_elements[temp_menu_pos] == "Lock Orientation":
+                        change_menu("Lock Orientation")
+                        # Can only be True or False
+                        set_menu_elements(['True', 'False'])
+                        cursor_to_top()
+                    # If Refresh Interval was selected, go into that sub-menu
+                    elif temp_elements[temp_menu_pos] == "Refresh Interval":
+                        change_menu("Refresh Interval")
+                        # Prepare a list of possible quick options for the interval
+                        set_menu_elements(['0.1', '0.25', '0.5', '0.75', '1', '1.5', '2', '2.5', '5', '10'])
+                        cursor_to_top()
+                    # If Display Enabled was selected, go into that sub-menu
+                    elif temp_elements[temp_menu_pos] == "Display Enabled":
+                        change_menu("Display Enabled")
+                        # Can only be True or False
+                        set_menu_elements(['True', 'False'])
+                        cursor_to_top()
+                    # If Print Enabled was selected, go into that sub-menu
+                    elif temp_elements[temp_menu_pos] == "Print Enabled":
+                        change_menu("Print Enabled")
+                        # Can only be True or False
+                        set_menu_elements(['True', 'False'])
+                        cursor_to_top()
+                elif temp_menu == "Default Orientation":
+                    new_orientation_string = temp_elements[temp_menu_pos]
+                    new_orientation_sub = new_orientation_string[0]
+                    set_config_value('defaultorientation', new_orientation_sub)
+                    close_menu()
+                elif temp_menu == "Lock Orientation":
+                    new_lock_orientation = temp_elements[temp_menu_pos]
+                    set_config_value('lockorientation', new_lock_orientation)
+                    close_menu()
+                elif temp_menu == "Refresh Interval":
+                    new_refresh_interval = temp_elements[temp_menu_pos]
+                    set_config_value('refreshinterval', new_refresh_interval)
+                    close_menu()
+                elif temp_menu == "Display Enabled":
+                    new_display_enabled = temp_elements[temp_menu_pos]
+                    set_config_value('displayenabled', new_display_enabled)
+                    close_menu()
+                elif temp_menu == "Print Enabled":
+                    new_print_enabled = temp_elements[temp_menu_pos]
+                    set_config_value('printenabled', new_print_enabled)
+                    close_menu()
+                # If we are in the Requests sub-menu already, which one of these options was selected
+                elif temp_menu == "Requests":
+                    # If Back was selected, return to the Top menu
+                    if temp_elements[temp_menu_pos] == "Back":
+                        change_menu("Top")
+                        set_menu_elements(topMenuElements)
+                        cursor_to_top()
+                    # If POST Enabled was selected, go into that sub-menu
+                    elif temp_elements[temp_menu_pos] == "POST Enabled":
+                        change_menu("POST Enabled")
+                        # Can only be True or False
+                        set_menu_elements(['True', 'False'])
+                        cursor_to_top()
+                    # If POST Interval was selected, go into that sub-menu
+                    elif temp_elements[temp_menu_pos] == "POST Interval":
+                        change_menu("POST Interval")
+                        # Prepare a list of possible quick options for the orientation
+                        set_menu_elements(['1', '2', '3', '4', '5', '10', '15', '20', '30', '60'])
+                        cursor_to_top()
+                    # If POST Timeout was selected, go into that sub-menu
+                    elif temp_elements[temp_menu_pos] == "POST Timeout":
+                        change_menu("POST Interval")
+                        # Prepare a list of possible quick options for the orientation
+                        set_menu_elements(['1', '2', '3', '4', '5', '10', '15', '20', '30', '60'])
+                        cursor_to_top()
+                elif temp_menu == "POST Enabled":
+                    new_send_enabled = temp_elements[temp_menu_pos]
+                    set_config_value('sendenabled', new_send_enabled)
+                    close_menu()
+                elif temp_menu == "POST Interval":
+                    new_post_interval = temp_elements[temp_menu_pos]
+                    set_config_value('postinterval', new_post_interval)
+                    close_menu()
+                elif temp_menu == "POST Timeout":
+                    new_post_timeout = temp_elements[temp_menu_pos]
+                    set_config_value('posttimeout', new_post_timeout)
+                    close_menu()
+                # If we are in the Ambient sub-menu already, which one of these options was selected
+                elif temp_menu == "Ambient":
+                    # If Back was selected, return to the Top menu
+                    if temp_elements[temp_menu_pos] == "Back":
+                        change_menu("Top")
+                        set_menu_elements(topMenuElements)
+                        cursor_to_top()
+                    # If Ambient Enabled was selected, go into that sub-menu
+                    elif temp_elements[temp_menu_pos] == "Ambient Enabled":
+                        change_menu("Ambient Enabled")
+                        # Can only be True or False
+                        set_menu_elements(['True', 'False'])
+                        cursor_to_top()
+                    # If Ambient Interval was selected, go into that sub-menu
+                    elif temp_elements[temp_menu_pos] == "Ambient Interval":
+                        change_menu("Ambient Interval")
+                        # Prepare a list of possible quick options for the orientation
+                        set_menu_elements(['1', '2', '3', '4', '5', '10', '15', '20', '30', '60'])
+                        cursor_to_top()
+                elif temp_menu == "Ambient Enabled":
+                    new_ambient_enabled = temp_elements[temp_menu_pos]
+                    set_config_value('ambientenabled', new_ambient_enabled)
+                    close_menu()
+                elif temp_menu == "Ambient Interval":
+                    new_ambient_interval = temp_elements[temp_menu_pos]
+                    set_config_value('ambientinterval', new_ambient_interval)
+                    close_menu()
+                # If we are in the Light sub-menu already, which one of these options was selected
+                elif temp_menu == "Light":
+                    # If Back was selected, return to the Top menu
+                    if temp_elements[temp_menu_pos] == "Back":
+                        change_menu("Top")
+                        set_menu_elements(topMenuElements)
+                        cursor_to_top()
+                    # If Light Enabled was selected, go into that sub-menu
+                    elif temp_elements[temp_menu_pos] == "Light Enabled":
+                        change_menu("Light Enabled")
+                        # Can only be True or False
+                        set_menu_elements(['True', 'False'])
+                        cursor_to_top()
+                    # If Light Interval was selected, go into that sub-menu
+                    elif temp_elements[temp_menu_pos] == "Light Interval":
+                        change_menu("Light Interval")
+                        # Prepare a list of possible quick options for the orientation
+                        set_menu_elements(['1', '2', '3', '4', '5', '10', '15', '20', '30', '60'])
+                        cursor_to_top()
+                elif temp_menu == "Light Interval":
+                    new_light_interval = temp_elements[temp_menu_pos]
+                    set_config_value('lightinterval', new_light_interval)
+                    close_menu()
+                elif temp_menu == "Light Enabled":
+                    global lightEnabled
+                    new_light_enabled = temp_elements[temp_menu_pos]
+                    parser.set('Light', 'lightenabled', str(new_light_enabled))
+                    lightEnabledLock.acquire()
+                    if new_light_enabled != lightEnabled:
+                        lightEnabled = new_light_enabled
+                        lightEnabledLock.release()
+                        if new_light_enabled:
+                            reboot_thread("LightThread", lightInterval, "UpdateLight")
+                    elif new_light_enabled == lightEnabled:
+                        lightEnabledLock.release()
+                    close_menu()
+                # If we are in the Accelerometer sub-menu already, which one of these options was selected
+                elif temp_menu == "Accelerometer":
+                    # If Back was selected, return to the Top menu
+                    if temp_elements[temp_menu_pos] == "Back":
+                        change_menu("Top")
+                        set_menu_elements(topMenuElements)
+                        cursor_to_top()
+                    # If Accel Enabled was selected, go into that sub-menu
+                    elif temp_elements[temp_menu_pos] == "Accel Enabled":
+                        change_menu("Accel Enabled")
+                        # Can only be True or False
+                        set_menu_elements(['True', 'False'])
+                        cursor_to_top()
+                    # If Ambient Interval was selected, go into that sub-menu
+                    elif temp_elements[temp_menu_pos] == "Accel Interval":
+                        change_menu("Accel Interval")
+                        # Prepare a list of possible quick options for the orientation
+                        set_menu_elements(['1', '2', '3', '4', '5', '10', '15', '20', '30', '60'])
+                        cursor_to_top()
+                elif temp_menu == "Accel Enabled":
+                    new_accel_enabled = temp_elements[temp_menu_pos]
+                    set_config_value('accelenabled', new_accel_enabled)
+                    close_menu()
+                elif temp_menu == "Accel Interval":
+                    new_accel_interval = temp_elements[temp_menu_pos]
+                    set_config_value('accelinterval', new_accel_interval)
+                    close_menu()
+                # If we are in the System sub-menu already, which one of these options was selected
+                elif temp_menu == "System":
+                    global killWatch
+                    # If Back was selected, return to the Top menu
+                    if temp_elements[temp_menu_pos] == "Back":
+                        change_menu("Top")
+                        set_menu_elements(topMenuElements)
+                        cursor_to_top()
+                    # If Shutdown was selected, shutdown the Raspberry Pi
+                    elif temp_elements[temp_menu_pos] == "Shutdown":
+                        kill_program()
+                        # Gives the program 5 seconds to wrap things up before shutting down
+                        os.system("sudo shutdown -h -t 5")
+                    # If Reboot was selected, reboot the Raspberry Pi
+                    elif temp_elements[temp_menu_pos] == "Reboot":
+                        kill_program()
+                        # Gives the program 5 seconds to wrap things up before rebooting
+                        os.system("sudo shutdown -r -t 5")
+                    # If Kill Program was selected, terminate the program
+                    elif temp_elements[temp_menu_pos] == "Kill Program":
+                        kill_program()
 
 
 def kill_program():
@@ -1275,6 +1423,22 @@ def get_config_value(name):
         accelIntervalLock.acquire()
         return_value = accelInterval
         accelIntervalLock.release()
+    elif name == "relayaddress":
+        relayAddressLock.acquire()
+        return_value = relayAddress
+        relayAddressLock.release()
+    elif name == "relayport":
+        relayPortLock.acquire()
+        return_value = relayPort
+        relayPortLock.release()
+    elif name == "configusername":
+        configUsernameLock.acquire()
+        return_value = configUsername
+        configUsernameLock.release()
+    elif name == "configpassword":
+        configPasswordLock.acquire()
+        return_value = configPassword
+        configPasswordLock.release()
     # If variable name wasn't found in the config, return this message
     else:
         return_value = "ConfigNotFound"
@@ -1287,7 +1451,8 @@ def set_config_value(name, value):
     succeeded = False
     global defaultOrientation, lockOrientation, sleepTime, displayEnabled, printEnabled, watchedInterface, \
         cpuTempInterval, interfaceInterval, publicInterval, sendEnabled, postInterval, postTimeout, serverURL, \
-        iftttKey, iftttEvent, ambientEnabled, ambientInterval, lightEnabled, lightInterval, accelEnabled, accelInterval
+        iftttKey, iftttEvent, ambientEnabled, ambientInterval, lightEnabled, lightInterval, accelEnabled, \
+        accelInterval, relayAddress, relayPort, configUsername, configPassword
     # UI Section
     if name == "defaultorientation":
         defaultOrientationLock.acquire()
@@ -1535,6 +1700,50 @@ def set_config_value(name, value):
             succeeded = False
         finally:
             accelIntervalLock.release()
+    elif name == "relayaddress":
+        relayAddressLock.acquire()
+        try:
+            relayAddress = value
+            parser.set('RemoteConfig', 'relayaddress', value)
+            succeeded = True
+        except TypeError:
+            succeeded = False
+        finally:
+            relayAddressLock.release()
+    elif name == "relayport":
+        relayPortLock.acquire()
+        try:
+            validate = int(value)
+            if 1 <= validate <= 65535:
+                relayPort = int(value)
+                parser.set('RemoteConfig', 'relayport', value)
+                succeeded = True
+            else:
+                succeeded = False
+        except TypeError:
+            succeeded = False
+        finally:
+            relayPortLock.release()
+    elif name == "configusername":
+        configUsernameLock.acquire()
+        try:
+            configUsername = value
+            parser.set('RemoteConfig', 'configusername', value)
+            succeeded = True
+        except TypeError:
+            succeeded = False
+        finally:
+            configUsernameLock.release()
+    elif name == "configpassword":
+        configPasswordLock.acquire()
+        try:
+            configPassword = value
+            parser.set('RemoteConfig', 'configpassword', value)
+            succeeded = True
+        except TypeError:
+            succeeded = False
+        finally:
+            configPasswordLock.release()
     return succeeded
 
 
@@ -1567,6 +1776,9 @@ def get_all_config():
     config_list.append({'name': "serverurl", 'value': get_config_value("serverurl")})
     config_list.append({'name': "iftttkey", 'value': get_config_value("iftttkey")})
     config_list.append({'name': "iftttevent", 'value': get_config_value("iftttevent")})
+    # Remote Config Section
+    config_list.append({'name': "relayaddress", 'value': get_config_value("relayaddress")})
+    config_list.append({'name': "relayport", 'value': get_config_value("relayport")})
     # Ambient Section
     config_list.append({'name': "ambientenabled", 'value': get_config_value("ambientenabled")})
     config_list.append({'name': "ambientinterval", 'value': get_config_value("ambientinterval")})
@@ -1725,10 +1937,12 @@ def send_values():
     temp_timeout = postTimeout
     postTimeoutLock.release()
     try:
-        requests.post(temp_url, data=json.dumps(payload), timeout=temp_timeout)
-        # print r.text #For debugging POST requests
+        post_request = requests.post(temp_url, data=json.dumps(payload), timeout=temp_timeout)
+        print(post_request.text)  # For debugging POST requests
     except requests.ConnectionError:
         print("POST ERROR - Check connection and server")
+    except requests.exceptions.Timeout:
+        print("POST TIMEOUT - Please try again or check connection")
 
 
 # Method names for the threads to call to update their variables
@@ -1739,8 +1953,8 @@ methods = {"UpdateDateTime": update_date_time,
            "UpdateWatchedInterfaceIP": update_watched_interface_ip,
            "UpdatePublicIP": update_public_ip,
            "UpdateAccelerometer": update_accelerometer,
-           "UpdateButton": update_button,
            "SendValues": send_values,
+           "UpdateMagnetometer": update_magnetometer
            }
 
 
@@ -2008,6 +2222,102 @@ def config():
     finally:
         print("IFTTT Event: " + iftttEvent)
 
+    global flaskEnabled
+    try:
+        flaskEnabled = parser.getboolean('RemoteConfig', 'flaskenabled')
+    except (ConfigParser.NoSectionError, ConfigParser.NoOptionError, ValueError):
+        try:
+            parser.set('RemoteConfig', 'flaskenabled', str(flaskEnabled))
+        except ConfigParser.NoSectionError:
+            parser.add_section('RemoteConfig')
+            parser.set('RemoteConfig', 'flaskenabled', str(flaskEnabled))
+    finally:
+        print("Flask Enabled: " + str(flaskEnabled))
+
+    global socketEnabled
+    try:
+        socketEnabled = parser.getboolean('RemoteConfig', 'socketenabled')
+    except (ConfigParser.NoSectionError, ConfigParser.NoOptionError, ValueError):
+        try:
+            parser.set('RemoteConfig', 'socketenabled', str(socketEnabled))
+        except ConfigParser.NoSectionError:
+            parser.add_section('RemoteConfig')
+            parser.set('RemoteConfig', 'socketenabled', str(socketEnabled))
+    finally:
+        print("Socket Enabled: " + str(socketEnabled))
+
+    global relayAddress
+    try:
+        relayAddress = parser.get('RemoteConfig', 'relayaddress')
+    except (ConfigParser.NoSectionError, ConfigParser.NoOptionError, ValueError):
+        try:
+            parser.set('RemoteConfig', 'relayaddress', relayAddress)
+        except ConfigParser.NoSectionError:
+            parser.add_section('RemoteConfig')
+            parser.set('RemoteConfig', 'relayaddress', relayAddress)
+    finally:
+        print("Relay Address: " + relayAddress)
+
+    global relayPort
+    try:
+        relayPort = parser.get('RemoteConfig', 'relayport')
+    except (ConfigParser.NoSectionError, ConfigParser.NoOptionError, ValueError):
+        try:
+            parser.set('RemoteConfig', 'relayport', relayPort)
+        except ConfigParser.NoSectionError:
+            parser.add_section('RemoteConfig')
+            parser.set('RemoteConfig', 'relayport', relayPort)
+    finally:
+        print("Relay Port: " + relayPort)
+
+    global configUsername
+    try:
+        configUsername = parser.get('RemoteConfig', 'configusername')
+    except (ConfigParser.NoSectionError, ConfigParser.NoOptionError, ValueError):
+        try:
+            parser.set('RemoteConfig', 'configusername', configUsername)
+        except ConfigParser.NoSectionError:
+            parser.add_section('RemoteConfig')
+            parser.set('RemoteConfig', 'configusername', configUsername)
+    finally:
+        print("Config Username: " + configUsername)
+
+    global configPassword
+    try:
+        configPassword = parser.get('RemoteConfig', 'configpassword')
+    except (ConfigParser.NoSectionError, ConfigParser.NoOptionError, ValueError):
+        try:
+            parser.set('RemoteConfig', 'configpassword', configPassword)
+        except ConfigParser.NoSectionError:
+            parser.add_section('RemoteConfig')
+            parser.set('RemoteConfig', 'configpassword', configPassword)
+    finally:
+        print("Config Password: " + configPassword)
+
+    global magnetEnabled
+    try:
+        magnetEnabled = parser.getboolean('Magnetometer', 'magnetenabled')
+    except (ConfigParser.NoSectionError, ConfigParser.NoOptionError, ValueError):
+        try:
+            parser.set('Magnetometer', 'magnetenabled', str(magnetEnabled))
+        except ConfigParser.NoSectionError:
+            parser.add_section('Magnetometer')
+            parser.set('Magnetometer', 'magnetenabled', str(magnetEnabled))
+    finally:
+        print("Magnet Enabled: " + str(magnetEnabled))
+
+    global magnetInterval
+    try:
+        magnetInterval = parser.getfloat('Magnetometer', 'magnetinterval')
+    except (ConfigParser.NoSectionError, ConfigParser.NoOptionError, ValueError):
+        try:
+            parser.set('Magnetometer', 'magnetinterval', str(magnetInterval))
+        except ConfigParser.NoSectionError:
+            parser.add_section('Magnetometer')
+            parser.set('Magnetometer', 'magnetinterval', str(magnetInterval))
+    finally:
+        print("Magnetometer Interval: " + str(magnetInterval))
+
     # Write the config file back to disk with the given values and
     # filling in any blanks with the defaults
     write_config()
@@ -2022,8 +2332,7 @@ def write_config():
         os.system("chmod 777 client.cfg")
 
 
-# Main Method
-def main():
+def setup():
     # CPU serial shouldn't change so it is only updated once
     update_serial()
 
@@ -2037,6 +2346,7 @@ def main():
     reboot_thread("PublicIPThread", publicInterval, "UpdatePublicIP")
     reboot_thread("AccelThread", accelInterval, "UpdateAccelerometer")
     reboot_thread("SendThread", postInterval, "SendValues")
+    reboot_thread("MagnetThread", magnetInterval, "UpdateMagnetometer")
 
     flaskEnabledLock.acquire()
     temp_flask_enabled = flaskEnabled
@@ -2044,6 +2354,10 @@ def main():
     if temp_flask_enabled:
         flask_thread = FlaskThread()
         flask_thread.start()
+
+    if check_sentinel("SocketSentinel"):
+        socket_thread = SocketThread()
+        socket_thread.start()
 
     # Set up the GPIO for the touch buttons and LED
     GPIO.setup(CAP_PIN, GPIO.IN)
@@ -2055,6 +2369,9 @@ def main():
     CapTouch.clearInterrupt()
     CapTouch.enableInterrupt(0, 0, 0x07)
 
+
+# Main Method
+def main():
     killWatchLock.acquire()
     temp_kill_watch = killWatch
     killWatchLock.release()
@@ -2084,56 +2401,36 @@ def main():
         killWatchLock.release()
 
 
+def cleanup():
+    kill_flask()
+
+    GPIO.cleanup()
+
+    write_config()
+
+    set_sentinel("UpdateDateTime", False)
+    set_sentinel("UpdateAmbient", False)
+    set_sentinel("UpdateLight", False)
+    set_sentinel("UpdateAccelerometer", False)
+    set_sentinel("UpdateCPUTemp", False)
+    set_sentinel("UpdateWatchedInterfaceIP", False)
+    set_sentinel("UpdatePublicIP", False)
+    set_sentinel("SendValues", False)
+    set_sentinel("UpdateMagnetometer", False)
+    set_sentinel("SocketSentinel", False)
+
+
 # Assuming this program is run itself, execute normally
 if __name__ == "__main__":
     # Initialize variables once by reading or creating the config file
     config()
     # Run the main method, halting on keyboard interrupt if run from console
     try:
+        setup()
         main()
     except KeyboardInterrupt:
         print("...Quitting ...")
     # Tell all threads to stop if the main program stops by setting their
     # respective repeat sentinels to False
     finally:
-        kill_flask()
-
-        GPIO.cleanup()
-
-        write_config()
-
-        timeEnabledLock.acquire()
-        timeEnabled = False
-        timeEnabledLock.release()
-
-        ambientEnabledLock.acquire()
-        ambientEnabled = False
-        ambientEnabledLock.release()
-
-        lightEnabledLock.acquire()
-        lightEnabled = False
-        lightEnabledLock.release()
-
-        accelEnabledLock.acquire()
-        accelEnabled = False
-        accelEnabledLock.release()
-
-        cpuEnabledLock.acquire()
-        cpuEnabled = False
-        cpuEnabledLock.release()
-
-        interfaceIPEnabledLock.acquire()
-        interfaceIPEnabled = False
-        interfaceIPEnabledLock.release()
-
-        publicIPEnabledLock.acquire()
-        publicIPEnabled = False
-        publicIPEnabledLock.release()
-
-        buttonEnabledLock.acquire()
-        buttonEnabled = False
-        buttonEnabledLock.release()
-
-        sendEnabledLock.acquire()
-        sendEnabled = False
-        sendEnabledLock.release()
+        cleanup()
