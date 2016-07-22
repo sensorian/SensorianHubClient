@@ -2263,12 +2263,12 @@ def config():
         relayPort = parser.get('RemoteConfig', 'relayport')
     except (ConfigParser.NoSectionError, ConfigParser.NoOptionError, ValueError):
         try:
-            parser.set('RemoteConfig', 'relayport', relayPort)
+            parser.set('RemoteConfig', 'relayport', str(relayPort))
         except ConfigParser.NoSectionError:
             parser.add_section('RemoteConfig')
-            parser.set('RemoteConfig', 'relayport', relayPort)
+            parser.set('RemoteConfig', 'relayport', str(relayPort))
     finally:
-        print("Relay Port: " + relayPort)
+        print("Relay Port: " + str(relayPort))
 
     global configUsername
     try:
