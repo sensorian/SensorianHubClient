@@ -33,6 +33,12 @@ cd bcm2835-1.50
 make
 sudo make check
 sudo make install
+
+#create libbcm2835.so
+cc -shared src/bcm2835.o -o src/libbcm2835.so
+sudo cp -p src/libbcm2835.so /usr/lib/
+
+#Leave the BCM folders
 cd ..
 cd ..
 
