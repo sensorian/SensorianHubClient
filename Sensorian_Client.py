@@ -1295,7 +1295,7 @@ def shutdown_pi():
 
 
 def shutdown_pi_helper():
-    os.system("sudo python shutdown.py -h -t 5")
+    os.system("sudo python shutdown.py -h --time=5")
 
 
 def reboot_pi():
@@ -1305,7 +1305,7 @@ def reboot_pi():
 
 
 def reboot_pi_helper():
-    os.system("sudo python shutdown.py -r -t 5")
+    os.system("sudo python shutdown.py -r --time=5")
 
 
 # Changes the menu to the passed value

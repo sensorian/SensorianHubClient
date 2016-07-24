@@ -11,22 +11,23 @@ def main(argv):
     power = False
     reboot = False
     try:
-        opts, args = getopt.getopt(argv, "hrt", ["ifile=", "ofile="])
+        opts, args = getopt.getopt(argv, "hr", ["time="])
     except getopt.GetoptError:
-        print('Usage - shutdown.py -h -r -t <seconds>')
+        print('Usage - shutdown.py -h -r --time=<seconds>')
         sys.exit(2)
+	print args
     for opt, arg in opts:
         if opt == '-h':
             power = True
         elif opt == '-r':
             reboot = True
-        elif opt == '-t':
+        elif opt == "--time":
             try:
                 wait_time = float(arg)
             except TypeError:
-                wait_time = 5
+                wait_time = 6
             except ValueError:
-                wait_time = 5
+                wait_time = 7
     if reboot:
         print("Rebooting in " + str(wait_time) + " seconds")
         time.sleep(wait_time)
