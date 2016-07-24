@@ -1270,12 +1270,12 @@ def button_handler(pressed):
                     elif temp_elements[temp_menu_pos] == "Shutdown":
                         kill_program()
                         # Gives the program 5 seconds to wrap things up before shutting down
-                        os.system("sudo shutdown -h -t 5")
+                        shutdown_pi()
                     # If Reboot was selected, reboot the Raspberry Pi
                     elif temp_elements[temp_menu_pos] == "Reboot":
                         kill_program()
                         # Gives the program 5 seconds to wrap things up before rebooting
-                        os.system("sudo shutdown -r -t 5")
+                        reboot_pi()
                     # If Kill Program was selected, terminate the program
                     elif temp_elements[temp_menu_pos] == "Kill Program":
                         kill_program()
