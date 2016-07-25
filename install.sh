@@ -67,5 +67,10 @@ cp -p PythonSharedObjectSrc/FXOS8700CQR1/libFXO.so ./libFXO.so
 
 cp -p PythonSharedObjectSrc/CAP1203/libCAP.so ./libCAP.so
 
+#Enable SPI and I2C interfaces
+sudo sed -i 's/#dtparam=i2c_arm=on/dtparam=i2c_arm=on/g' /boot/config.txt
+sudo sed -i 's/#dtparam=spi=on/dtparam=spi=on/g' /boot/config.txt
+sudo sh -c 'echo i2c-dev >> /etc/modules'
+
 #At this point, everything should be installed and working after reboot
 echo "Sensorian Client dependencies should now be setup. Please reboot!"
