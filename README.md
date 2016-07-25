@@ -11,17 +11,15 @@ To get this working in a split, just follow these simple instructions!
 To summarize for experts, simply clone/download the repo wherever and run the install script!  
 
 1. Install the latest Raspbian image to your Pi following [this official guide](https://www.raspberrypi.org/documentation/installation/installing-images/)  
-2. Boot up the Pi, and connect to it however you like. A display cable is not necessary.  
-3. Run `sudo raspi-config` to your liking, remember that you can simply boot to console, no display required.  
-4. Be sure to enable the SPI and I2C interfaces in Advanced Options, and optionally SSH.   
-5. Download/clone the project to a directory by navigating to it and typing the following line  
+2. Boot up the Pi, and connect to it however you like. A display cable is not necessary.    
+3. Download/clone the project to a directory by navigating to it and typing the following line  
   * `git clone https://github.com/sensorian/SensorianHubClient.git` 
   * Or if you're feeling adventurous and want to run what is likely my broken development code, try this:  
   * `git clone https://github.com/sensorian/SensorianHubClient.git -b development --single-branch`
-6. Change into the new directory using `cd SensorianHubClient` then type `chmod +x install.sh`  
-7. Run `./install.sh` and wait for it to finish  
-8. When it is finally done installing dependencies, reboot the Pi with `sudo reboot`  
-9. Finally, `sudo python Sensorian_Client.py` to run the client!  
+4. Change into the new directory using `cd SensorianHubClient` then type `chmod +x install.sh`  
+5. Run `./install.sh` and wait for it to finish  
+6. When it is finally done installing dependencies, reboot the Pi with `sudo reboot`  
+7. Finally, `sudo python Sensorian_Client.py` to run the client!  
 
 It works best when run automatically on every boot, so add it to cron to do so!  
 For the uninitiated, here's how:  
