@@ -1,4 +1,10 @@
 #!/usr/bin/python
+
+"""Sensorian_Client.py: Collects sensor data on given intervals and sends it to various services upon request.
+
+Cab be run on its own or imported to other projects and run in the background.
+"""
+
 from __future__ import print_function
 import ConfigParser
 import os
@@ -24,6 +30,10 @@ from flask import Flask, abort, request
 from flask_restful import Api, Resource, reqparse
 from flask_httpauth import HTTPBasicAuth
 from multiprocessing import Process
+
+__author__ = "Dylan Kauling"
+__maintainer__ = "Dylan Kauling"
+__status__ = "Development"
 
 # Sensor initializations
 
@@ -197,12 +207,20 @@ auth = HTTPBasicAuth()
 
 @auth.get_password
 def get_password(username):
+    """Used by Flask HTTP Auth to validate a username and password when requesting a secure page.
+
+    Accepts a single username and password from the config file.
+    """
     if username == configUsername:
         return configPassword
     return None
 
 
 class ConfigListAPI(Resource):
+    """Flask RESTful API for listing all current config values.
+
+    Execute a GET request to http://0.0.0.0/variables to retrieve the list.
+    """
     decorators = [auth.login_required]
 
     def __init__(self):
@@ -217,6 +235,10 @@ class ConfigListAPI(Resource):
 
 
 class ConfigAPI(Resource):
+    """Flask RESTful API for checking and updating specific config values.
+
+    Execute a GET or PUT request to http://0.0.0.0/variables/variablename to retrieve or set the item.
+    """
     decorators = [auth.login_required]
 
     def __init__(self):
@@ -253,11 +275,20 @@ api.add_resource(ConfigAPI, '/variables/<string:name>', endpoint='variable')
 
 
 def run_flask():
+    """Method called by the Flask Thread to start the Flask server.
+
+    Runs the Flask server in debug mode currently and binds to any interface.
+    Can be called directly as well if not already running.
+    """
     print("Running Flask")
     app.run(debug=True, use_reloader=False, host='0.0.0.0')
 
 
 def shutdown_server():
+    """Method called to shut down the Flask server if it is running.
+
+    Called on application close on upon POST request to /shutdown
+    """
     func = request.environ.get('werkzeug.server.shutdown')
     if func is None:
         raise RuntimeError('Not running with the Werkzeug Server')
@@ -267,6 +298,11 @@ def shutdown_server():
 @app.route('/shutdown', methods=['POST'])
 @auth.login_required
 def shutdown_flask_api():
+    """Flask API to shut down the Flask server.
+
+    This of course prevents future calls to the Flask API.
+    Requires Basic Authentication with config username and password.
+    """
     shutdown_server()
     return 'Flask server shutting down...'
 
@@ -274,6 +310,11 @@ def shutdown_flask_api():
 @app.route('/commands/kill', methods=['POST'])
 @auth.login_required
 def kill_client_api():
+    """Flask API to kill the Sensorian Hub Client gracefully.
+
+    This of course prevents future calls to the Client.
+    Requires Basic Authentication with config username and password.
+    """
     kill_program()
     return 'Sensorian Client shutting down...'
 
@@ -281,6 +322,11 @@ def kill_client_api():
 @app.route('/commands/shutdown', methods=['POST'])
 @auth.login_required
 def shutdown_pi_api():
+    """Flask API to shutdown the Raspberry Pi.
+
+    This of course prevents future calls to the Client.
+    Requires Basic Authentication with config username and password.
+    """
     shutdown_pi()
     return 'Raspberry Pi shutting down...'
 
@@ -288,11 +334,21 @@ def shutdown_pi_api():
 @app.route('/commands/reboot', methods=['POST'])
 @auth.login_required
 def reboot_pi_api():
+    """Flask API to shutdown the Raspberry Pi.
+
+    This of course prevents future calls to the Client until it is started again.
+    Requires Basic Authentication with config username and password.
+    """
     reboot_pi()
     return 'Raspberry Pi rebooting...'
 
 
 def kill_flask():
+    """Deprecated method to shut down the Flask server. Use shutdown_server() instead.
+
+    This makes a POST to the shutdown URL with hardcoded authentication not equal to the config file.
+    Should be able to call shutdown_server() directly instead.
+    """
     url = 'http://127.0.0.1:5000/shutdown'
     headers = {'Authorization': 'Basic ZHlsYW46ZHlsYW5yZXN0cGFzcw=='}
     try:
@@ -301,9 +357,11 @@ def kill_flask():
         print("Flask server already shut down")
 
 
-# Updates the global CPU serial variable
 def update_serial():
-    # Extract serial from cpuinfo file
+    """Updates the global CPU serial variable by reading it from the cpuinfo file.
+
+    Really only needs to be called once when the Client is initialized. It's not going to change.
+    """
     global cpuSerial
     temp_serial = "0000000000000000"
     # Get serial from the file, if fails, return error serial
@@ -324,19 +382,25 @@ def update_serial():
         serialLock.release()
 
 
-# Get the most recent update of the serial number when safe
 def get_serial():
+    """Gets the CPU serial from the global variable when not locked.
+
+    :return: String of the CPU serial.
+    """
     serialLock.acquire()
     temp_serial = cpuSerial
     serialLock.release()
     return temp_serial
 
 
-# General thread class to repeatedly update a variable at a set interval
 class GeneralThread(threading.Thread):
+    """General Thread class to repeatedly update a variable at a given interval
+
+    Takes an arbitrary int thread_id and string name to identify the thread.
+    Takes an integer or float interval for how long in seconds to wait between updating values.
+    Takes the string method which is the name of the method to call contained in the methods dictionary.
+    """
     # Initializes a thread upon creation
-    # Takes an artbitrary ID and name of thread, an interval float how often
-    # to update the variable, and the method name to call to update it
     def __init__(self, thread_id, name, interval, method):
         threading.Thread.__init__(self)
         self.threadID = thread_id
@@ -374,20 +438,34 @@ class GeneralThread(threading.Thread):
 
 
 class FlaskThread(threading.Thread):
-    # Initializes a thread to run Flask
+    """A Thread class specifically to run a Flask server in the background.
+
+    Terminates when an authenticated POST to /shutdown is made or shutdown_server() is called.
+    """
     def __init__(self):
+        """Initializes a Flask Thread with only a default ID and name.
+        """
         threading.Thread.__init__(self)
         self.threadID = 99
         self.name = "FlaskThread"
 
     def run(self):
+        """Runs a Flask server continuously until terminated.
+
+        Can be terminated by an authenticated POST to /shutdown or call of shutdown_server().
+        """
         run_flask()
         print("Killing FlaskThread")
 
 
 class SocketThread(threading.Thread):
-    # Initializes a thread to run Flask
+    """A Thread class specifically to establish a socket with a Sensorian Hub Site relay server.
+
+    The socket code is kind of janky with no real schema yet, but allows for configuration behind NATs and firewalls.
+    """
     def __init__(self):
+        """Initializes the Socket thread with the config values for address, port and defaults for timings and ID/name.
+        """
         threading.Thread.__init__(self)
         self.threadID = 100
         self.name = "SocketThread"
@@ -400,6 +478,10 @@ class SocketThread(threading.Thread):
         self.timeout = 5.0
 
     def run(self):
+        """Loops attempts to establish a socket and waits for commands from the server when one is established.
+
+        Can be terminated by setting the SocketSentinel to False.
+        """
         while self.repeat:
             if not self.connected:
                 try:
@@ -443,8 +525,11 @@ class SocketThread(threading.Thread):
         print("Killing SocketThread")
 
 
-# Updates the global light variable
 def update_light():
+    """Updates the global light variable by reading the Lux value from the Sensorian ambient light sensor.
+
+    This is called by the Light Thread, but can be called directly as well.
+    """
     global light
     temp_light = -1
     I2CLock.acquire()
@@ -464,8 +549,11 @@ def update_light():
     lightLock.release()
 
 
-# Get the most recent update of the light level when safe
 def get_light():
+    """Gets the most recent update of the global light variable when not locked.
+
+    :return: Float of the last updated light value.
+    """
     lightLock.acquire()
     try:
         temp_light = light
@@ -474,24 +562,33 @@ def get_light():
     return temp_light
 
 
-# Get the most recent update of the ambient temperature when safe
 def get_ambient_temp():
+    """Gets the most recent update of the global ambient temperature variable when not locked.
+
+    :return: Float of the last updated ambient temperature.
+    """
     ambientTempLock.acquire()
     return_temp = ambientTemp
     ambientTempLock.release()
     return return_temp
 
 
-# Get the most recent update of the ambient pressure when safe
 def get_ambient_pressure():
+    """Gets the most recent update of the global barometric pressure variable when not locked.
+
+    :return: Float of the last updated barometric pressure.
+    """
     ambientPressureLock.acquire()
     return_press = float(ambientPressure) / 1000
     ambientPressureLock.release()
     return return_press
 
 
-# Update the various barometer/altimeter sensor variables
 def update_ambient():
+    """Updates the global ambient temperature and pressure variables by using the Sensorian Altibar sensor.
+
+    This is called by the Ambient Thread, but can be called directly as well.
+    """
     global ambientTemp
     global ambientPressure
     # Sensor needs some wait time between calls
@@ -536,8 +633,11 @@ def update_ambient():
     '''
 
 
-# Update the current date and time from the real time clock
 def update_date_time():
+    """Updates the global RTC date/time object by polling the date and time from the Sensorian real-time clock.
+
+    This is called by the Time Thread, but can be called directly as well.
+    """
     global currentDateTime
     I2CLock.acquire()
     temp_date_time = RTC.GetTime()
@@ -547,16 +647,22 @@ def update_date_time():
     rtcLock.release()
 
 
-# Get the most recent date and time when safe
 def get_date_time():
+    """Gets the most recent update of the global RTC date/time object when not locked.
+
+    :return: RTC date/time object containing the last updated date and time.
+    """
     rtcLock.acquire()
     temp_date_time = currentDateTime
     rtcLock.release()
     return temp_date_time
 
 
-# Update the global variable of the CPU temperature
 def update_cpu_temp():
+    """Updates the global CPU temperature variable by reading the value from the system temperature file.
+
+    This is called by the CPU Thread, but can be called directly as well.
+    """
     # Read the CPU temperature from the system file
     global cpuTemp
     temp_path = '/sys/class/thermal/thermal_zone0/temp'
@@ -570,16 +676,22 @@ def update_cpu_temp():
     cpuTempLock.release()
 
 
-# Get the latest update of the CPU temperature when safe
 def get_cpu_temp():
+    """Gets the most recent update of the global CPU temperature variable when not locked.
+
+    :return: Float containing the last updated CPU temperature in Celcius.
+    """
     cpuTempLock.acquire()
     temp = cpuTemp
     cpuTempLock.release()
     return temp
 
 
-# Update the global variable for the IP of the primary interface
 def update_watched_interface_ip():
+    """Updates the global Watched Network Interface IP variable by calling get_interface_ip().
+
+    This is called by the Update Watched IP Thread, but can be called directly as well.
+    """
     global interfaceIP
     watchedInterfaceLock.acquire()
     temp_interface = watchedInterface
@@ -590,16 +702,24 @@ def update_watched_interface_ip():
     interfaceIPLock.release()
 
 
-# Get the latest IP of the primary interface when safe
 def get_watched_interface_ip():
+    """Gets the most recent update of the global watched network interface IP variable when not locked.
+
+    :return: String of the watched network interface's IP from the last update.
+    """
     interfaceIPLock.acquire()
     temp_ip = interfaceIP
     interfaceIPLock.release()
     return temp_ip
 
 
-# Get the IP of the passed interface
 def get_interface_ip(interface):
+    """Gets the IP of the network interface passed by establishing and reading on socket on that interface.
+
+    This is called by update_watched_interface_ip() with the watched interface, but can be called directly as well.
+    :param interface: String of the network interface to check, eg. eth0, wlan0, etc.
+    :return: String of the given network interface's IP, defaults to 0.0.0.0
+    """
     # Create a socket to use to query the interface
     s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     # Try to get the IP of the passed interface
@@ -619,9 +739,13 @@ def get_interface_ip(interface):
     return ipaddr
 
 
-# Update the global variable for current public IP from the icanhazip site
-# Don't update too frequently, that's not cool
 def update_public_ip():
+    """Updates the global Public IP variable by calling curl on icanhazip.com
+
+    Called by Update Public IP Thread, but can be called directly as well.
+    Gets the IP from icanhazip.com. As with any Internet resource, please be respectful.
+    Ie. Don't update too frequently, that's not cool.
+    """
     global publicIP
     # Initiate a subprocess to run a curl request for the public IP
     proc = subprocess.Popen(["curl", "-s", "-4", "icanhazip.com"], stdout=subprocess.PIPE)
@@ -632,16 +756,22 @@ def update_public_ip():
     publicIPLock.release()
 
 
-# Get the latest update of the public IP address
 def get_public_ip():
+    """Gets the most recent update of the global public IP variable when not locked.
+
+    :return: String of the public IP of the Client from the last update.
+    """
     publicIPLock.acquire()
     temp_ip = publicIP
     publicIPLock.release()
     return temp_ip
 
 
-# Update all accelerometer related global variables when safe
 def update_accelerometer():
+    """Updates all the various Accelerometer-related global variables by polling the Sensorian's Accelerometer.
+
+    This is called by the Accel Thread, but can be called directly as well.
+    """
     global mode
     global modeprevious
     global accelX
@@ -674,8 +804,11 @@ def update_accelerometer():
         I2CLock.release()
 
 
-# Update all the magnetometer related global variables when safe
 def update_magnetometer():
+    """Updates all the various Magnetometer-related global variables by polling the Sensorian's Magnetometer.
+
+    This is called by the Magnet Thread, but can be called directly as well.
+    """
     global magnetX, magnetY, magnetZ
     I2CLock.acquire()
     # If the magnetometer is ready, read the magnetic forces
@@ -696,64 +829,90 @@ def update_magnetometer():
         I2CLock.release()
 
 
-# Get the latest update of the magnetic forces in the X direction when safe
 def get_mag_x():
+    """Gets the most recent update of the global magnetic force x variable when not locked.
+
+    :return: Integer of the last updated magnetic force in the X direction
+    """
     magnetXLock.acquire()
     x = magnetX
     magnetXLock.release()
     return x
 
 
-# Get the latest update of the magnetic forces in the Y direction when safe
 def get_mag_y():
+    """Gets the most recent update of the global magnetic force y variable when not locked.
+
+    :return: Integer of the last updated magnetic force in the Y direction
+    """
     magnetYLock.acquire()
     y = magnetY
     magnetYLock.release()
     return y
 
 
-# Get the latest update of the magnetic forces in the Z direction when safe
 def get_mag_z():
+    """Gets the most recent update of the global magnetic force z variable when not locked.
+
+    :return: Integer of the last updated magnetic force in the Z direction
+    """
     magnetZLock.acquire()
     z = magnetZ
     magnetZLock.release()
     return z
 
 
-# Get the latest update of the orientation from the global when safe
 def get_mode():
+    """Gets the most recent update of the global orientation variable when not locked.
+
+    :return: Integer of the last updated orientation
+    """
     modeLock.acquire()
     temp_mode = mode
     modeLock.release()
     return temp_mode
 
 
-# Get the latest update of the X acceleration when safe
 def get_accel_x():
+    """Gets the most recent update of the global acceleration x variable when not locked.
+
+    :return: Integer of the last updated acceleration in the X direction
+    """
     accelXLock.acquire()
     x = accelX
     accelXLock.release()
     return x
 
 
-# Get the latest update of the Y acceleration when safe
 def get_accel_y():
+    """Gets the most recent update of the global acceleration y variable when not locked.
+
+    :return: Integer of the last updated acceleration in the Y direction
+    """
     accelYLock.acquire()
     y = accelY
     accelYLock.release()
     return y
 
 
-# Get the latest update of the Z acceleration when safe
 def get_accel_z():
+    """Gets the most recent update of the global acceleration z variable when not locked.
+
+    :return: Integer of the last updated acceleration in the Z direction
+    """
     accelZLock.acquire()
     z = accelZ
     accelZLock.release()
     return z
 
 
-# Update the button pressed when interrupted
 def button_event_handler(pin):
+    """Method that is called when an interrupt is generated on the Sensorian Capacitive Button interrupt pin.
+
+    Updates the global button variable with the button pressed and calls the button_handler with that button.
+    Called by the interrupt event exclusively. Could be called directly with CAP_PIN passed with unknown results.
+    :param pin: Pin number that the interrupt event came from, passed by the event.
+    """
     # Confirms that the interrupt came from the button pin just
     # so your IDE doesn't complain about pin going unused
     if pin == CAP_PIN:
@@ -773,16 +932,25 @@ def button_event_handler(pin):
         GPIO.output(LED_PIN, False)
 
 
-# Get the latest update of the most recent button press
 def get_button():
+    """Gets the number of the button pressed from the last update/interrupt.
+
+    :return: Integer of which was the last button pressed.
+    """
     buttonLock.acquire()
     temp_button = button
     buttonLock.release()
     return temp_button
 
 
-# Method for the threads to check if their sentinels have changed
 def check_sentinel(sentinel):
+    """Checks the current state of the global sentinel boolean variable passed to the method.
+
+    Called by threads to check if they should be started at boot/continue executing.
+    Can be called directly to check the current state of these sentinel variables safely.
+    :param sentinel: String name of the Sentinel variable to be checked.
+    :return: Boolean of the state of the sentinel checked, defaults to False if not found.
+    """
     # Check the thread's method name against the statements to
     # find their respective sentinel variables
     if sentinel == "UpdateDateTime":
@@ -834,8 +1002,14 @@ def check_sentinel(sentinel):
     return state
 
 
-# Method for the threads to check if their sentinels have changed
 def set_sentinel(sentinel, state):
+    """Sets the current state of the global sentinel boolean variable passed to the method to the passed state.
+
+    Called in cleanup() to terminate all the threads at the end of the Client's execution.
+    Can be called directly to stop a specific thread or to prepare a thread to be started.
+    :param sentinel: String name of the Sentinel variable to be set.
+    :param state: Boolean state to which the Sentinel variable will be set.
+    """
     global timeEnabled, ambientEnabled, lightEnabled, cpuEnabled, interfaceIPEnabled, publicIPEnabled, \
         accelEnabled, buttonEnabled, sendEnabled, socketEnabled, magnetEnabled
     # Check the thread's method name against the statements to
@@ -886,7 +1060,6 @@ def set_sentinel(sentinel, state):
         magnetEnabledLock.release()
 
 
-# Sends a request to an IFTTT Maker Channel with the given key and event name
 def ifttt_trigger(key="xxxxxxxxxxxxxxxxxxxxxx", event="SensorianEvent", timeout=5, value1="", value2="", value3=""):
     """Sends a request to an IFTTT Maker Channel with the given key and event name.
 
@@ -912,6 +1085,11 @@ def ifttt_trigger(key="xxxxxxxxxxxxxxxxxxxxxx", event="SensorianEvent", timeout=
 
 
 def get_menu_elements():
+    """Gets a list of the current menu elements global variable to be displayed on the LCD.
+
+    Called when the menu is displayed/refreshed.
+    :return: String List of the current menu elements.
+    """
     menuElementsLock.acquire()
     temp_elements = menuElements
     menuElementsLock.release()
@@ -919,6 +1097,11 @@ def get_menu_elements():
 
 
 def set_menu_elements(new_list):
+    """Sets a new list to the current menu elements global variable to be displayed on the LCD.
+
+    Called when the menu level is changed.
+    :param new_list: String list of the new current menu elements.
+    """
     global menuElements
     menuElementsLock.acquire()
     menuElements = new_list
@@ -926,6 +1109,12 @@ def set_menu_elements(new_list):
 
 
 def button_handler(pressed):
+    """Handles button presses on the Sensorian Shield to fire an event or display/interact with a local config menu.
+
+    Called by button_event_handler() when a button interrupt is received.
+    Could be called directly to automate menu interactions for demonstration purposes.
+    :param pressed: Integer of the last button pressed.
+    """
     if check_sentinel("ButtonEnabled"):
         global inMenu
         global currentMenu
@@ -1219,17 +1408,8 @@ def button_handler(pressed):
                     set_config_value('lightinterval', new_light_interval)
                     close_menu()
                 elif temp_menu == "Light Enabled":
-                    global lightEnabled
                     new_light_enabled = temp_elements[temp_menu_pos]
-                    parser.set('Light', 'lightenabled', str(new_light_enabled))
-                    lightEnabledLock.acquire()
-                    if new_light_enabled != lightEnabled:
-                        lightEnabled = new_light_enabled
-                        lightEnabledLock.release()
-                        if new_light_enabled:
-                            reboot_thread("LightThread", lightInterval, "UpdateLight")
-                    elif new_light_enabled == lightEnabled:
-                        lightEnabledLock.release()
+                    set_config_value('lightenabled', new_light_enabled)
                     close_menu()
                 # If we are in the Accelerometer sub-menu already, which one of these options was selected
                 elif temp_menu == "Accelerometer":
@@ -1268,12 +1448,10 @@ def button_handler(pressed):
                         cursor_to_top()
                     # If Shutdown was selected, shutdown the Raspberry Pi
                     elif temp_elements[temp_menu_pos] == "Shutdown":
-                        kill_program()
                         # Gives the program 5 seconds to wrap things up before shutting down
                         shutdown_pi()
                     # If Reboot was selected, reboot the Raspberry Pi
                     elif temp_elements[temp_menu_pos] == "Reboot":
-                        kill_program()
                         # Gives the program 5 seconds to wrap things up before rebooting
                         reboot_pi()
                     # If Kill Program was selected, terminate the program
@@ -1282,6 +1460,10 @@ def button_handler(pressed):
 
 
 def kill_program():
+    """Signals the Client to terminate gracefully by setting the kill sentinel to True.
+
+    Called by the local menu, Flask API or the shutdown/reboot functions, but can be called directly as well.
+    """
     global killWatch
     killWatchLock.acquire()
     killWatch = True
@@ -1289,43 +1471,70 @@ def kill_program():
 
 
 def shutdown_pi():
+    """Signals the Raspberry Pi to shut down in 5 seconds to give the Client time to wrap up.
+
+    Calls kill_program() first to terminate the Client gracefully then shutdown_pi_helper() to shut down.
+    Called by the local menu or Flask API but can be called directly as well.
+    """
     kill_program()
     shutdown_helper = Process(target=shutdown_pi_helper)
     shutdown_helper.start()
 
 
 def shutdown_pi_helper():
+    """Calls the helper shutdown.py script with the halt and 5 second time parameters to shut down the Pi in 5 seconds.
+
+    Should not be called directly if the Client is already running.
+    """
     os.system("sudo python shutdown.py -h --time=5")
 
 
 def reboot_pi():
+    """Signals the Raspberry Pi to reboot in 5 seconds to give the Client time to wrap up.
+
+    Calls kill_program() first to terminate the Client gracefully then reboot_pi_helper() to reboot.
+    Called by the local menu or Flask API but can be called directly as well.
+    """
     kill_program()
     reboot_helper = Process(target=reboot_pi_helper)
     reboot_helper.start()
 
 
 def reboot_pi_helper():
+    """Calls the helper shutdown.py script with the reboot and 5 second time parameters to reboot the Pi in 5 seconds.
+
+    Should not be called directly if the Client is already running.
+    """
     os.system("sudo python shutdown.py -r --time=5")
 
 
-# Changes the menu to the passed value
 def change_menu(new_menu):
+    """Changes the menu to be displayed on the LCD by passing the name of the new menu to be set to the global variable.
+
+    :param new_menu: String name of the new menu to be displayed on the LCD.
+    """
     global currentMenu
     currentMenuLock.acquire()
     currentMenu = new_menu
     currentMenuLock.release()
 
 
-# Close the LCD configuration menu
 def close_menu():
+    """Closes the LCD local configuration menu by setting the global inMenu variable to False.
+
+    Called when Exit or a new value or action is selected, but can be called directly as well for demo purposes.
+    """
     global inMenu
     inMenuLock.acquire()
     inMenu = False
     inMenuLock.release()
 
 
-# Brings the pointer arrow on the LCD menu to the top of whatever list is being shown
 def cursor_to_top():
+    """Brings the pointer arrow on the LCD menu to the top of whatever list is being shown
+
+    Called when displaying a new menu or looping back around from the bottom of a menu.
+    """
     global menuPosition
     menuPositionLock.acquire()
     menuPosition = 0
@@ -1333,6 +1542,12 @@ def cursor_to_top():
 
 
 def get_config_value(name):
+    """Gets the current value of the passed config variable name.
+
+    Functionality may be combined/reorganized with that of check_sentinel() in the future.
+    :param name: String name of the config value to be checked. Naming matches that of the config file.
+    :return: String of the current value of the config variable, needs to be casted back if string not desired.
+    """
     # UI Section
     if name == "defaultorientation":
         defaultOrientationLock.acquire()
@@ -1445,9 +1660,14 @@ def get_config_value(name):
     return str(return_value)
 
 
-# Updates one of the config values in both memory and the parser values to be written
-# Take a string for the name of the value to change and a string of the new value
 def set_config_value(name, value):
+    """Sets a config value in both the Config Parser memory and Client memory with a passed name and new value.
+
+    Functionality may be combined/reorganized with that of set_sentinel() in the future.
+    :param name: String name of the config value to be set. Naming matches that of the config file.
+    :param value: String value of the new value to be set to the config variable. Auto-casted to the appropriate type.
+    :return: Boolean of if the set operation was successful or not. Could fail for unknown variable or wrong data type.
+    """
     succeeded = False
     global defaultOrientation, lockOrientation, sleepTime, displayEnabled, printEnabled, watchedInterface, \
         cpuTempInterval, interfaceInterval, publicInterval, sendEnabled, postInterval, postTimeout, serverURL, \
@@ -1748,6 +1968,11 @@ def set_config_value(name, value):
 
 
 def bool_check(value):
+    """Helper function for checking if the passed String is a valid boolean state.
+
+    :param value: String value to be checked for boolean status.
+    :return: 2-boolean list, with the first boolean indicating if it's a boolean and if so its value in the second item.
+    """
     if value in ['True', 'true', 'TRUE', 'T', 't', 'Y', 'y', '1']:
         return [True, True]
     elif value in ['False', 'false', 'FALSE', 'F', 'f', 'N', 'n', '0']:
@@ -1757,6 +1982,11 @@ def bool_check(value):
 
 
 def get_all_config():
+    """Gets a list of all the config file variable names and values in dictionary format.
+
+    Called by ConfigListAPI() when all variables are GET requested.
+    :return: List of all the config file variable names and values in dictionary format.
+    """
     config_list = list()
     # UI Section
     config_list.append({'name': "defaultorientation", 'value': get_config_value("defaultorientation")})
@@ -1792,6 +2022,13 @@ def get_all_config():
 
 
 def reboot_thread(thread_name, thread_interval, sentinel_name):
+    """Reboots a thread with a new interval, or starts it if not running in the first place.
+
+    Called in setup() when the Client is started or in set_config_value() when a thread should be started.
+    :param thread_name: String name of the thread to start. Defined in methods.
+    :param thread_interval: Integer/Float of how often to update the value in seconds.
+    :param sentinel_name: String name of the sentinel which determines if the thread should be running.
+    """
     global threads
     if check_sentinel(sentinel_name):
         set_sentinel(sentinel_name, False)
@@ -1804,8 +2041,11 @@ def reboot_thread(thread_name, thread_interval, sentinel_name):
         threads.append(new_thread)
 
 
-# Displays all the watched variables on the TFT LCD if enabled
 def display_values():
+    """Displays the watched variables on the LCD or the menu if it is active.
+
+    Called on a loop in the main method when enabled to keep refreshing the screen, but can be called directly as well.
+    """
     disp.clear()
     # Checks if the orientation of the display should be locked
     # If so, force the default orientation from the config file
@@ -1884,8 +2124,11 @@ def display_values():
     disp.display(canvas)
 
 
-# Prints all the watched variables to the console if enabled
 def print_values():
+    """Prints all the watched variables to the console/standard output.
+
+    Called on a loop in the main method if enabled to keep refreshing the values, but can be called directly as well.
+    """
     options = {-1: "Not Ready",
                0: "Landscape Left",
                1: "Landscape Right",
@@ -1911,8 +2154,11 @@ def print_values():
     print("--------------------")
 
 
-# POST the variables in JSON format to the URL specified in the config file
 def send_values():
+    """POSTs the watched variables in JSON format to the URL specified in the config file.
+
+    Called by the Send Thread on a regular interval if enabled, but can be called directly as well.
+    """
     rtc_time = get_date_time()
     time_string = "20" + '{:02d}'.format(rtc_time.year) + "-" + '{:02d}'.format(rtc_time.month) + "-" + '{:02d}'.format(
         rtc_time.date) + " " + '{:02d}'.format(rtc_time.hour) + ":" + '{:02d}'.format(
@@ -1958,8 +2204,11 @@ methods = {"UpdateDateTime": update_date_time,
            }
 
 
-# Method to read the config file or set defaults if parameters missing
 def config():
+    """Reads the client.cfg configuration file and sets global variables from it or default values if missing.
+
+    Called on startup to initialize the Client from the config file, but can be called directly to read it again.
+    """
     print("-------------------------")
     print("Configuring Settings")
     global parser
@@ -2325,14 +2574,21 @@ def config():
     print("-------------------------")
 
 
-# Writes any changes to the config file back to disk whenever changes are made
 def write_config():
+    """Writes any changes to the Config Parser memory back to the client.cfg file on disk to save changes.
+
+    Called by config() to create the file if missing and cleanup() to save values for the next execution.
+    """
     with open('client.cfg', 'w') as configfile:
         parser.write(configfile)
         os.system("chmod 777 client.cfg")
 
 
 def setup():
+    """Prepares the Client for execution by starting the threads and enabling interrupts.
+
+    Called when the Client is started but should be called directly when using the Client in another project.
+    """
     # CPU serial shouldn't change so it is only updated once
     update_serial()
 
@@ -2370,8 +2626,11 @@ def setup():
     CapTouch.enableInterrupt(0, 0, 0x07)
 
 
-# Main Method
 def main():
+    """The main method. Loops the display of values on the LCD and/or console until told to terminate.
+
+    Called when the Client is started but could be called directly to automate the data displays when imported.
+    """
     killWatchLock.acquire()
     temp_kill_watch = killWatch
     killWatchLock.release()
@@ -2402,7 +2661,12 @@ def main():
 
 
 def cleanup():
-    kill_flask()
+    """Tells all the threads to stop gracefully and performs other final actions like writing the config file.
+
+    Called when the Client is terminated but should be called directly when done using the Client in another project.
+    """
+    # kill_flask()
+    shutdown_server()
 
     GPIO.cleanup()
 
