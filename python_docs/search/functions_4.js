@@ -1,0 +1,24 @@
+var searchData=
+[
+  ['get_5faccel_5fx',['get_accel_x',['../namespace_sensorian___client.html#af231f0abb102cb3593327eca0323c805',1,'Sensorian_Client']]],
+  ['get_5faccel_5fy',['get_accel_y',['../namespace_sensorian___client.html#a58dc2a2130a406ec68148b79cb00d67d',1,'Sensorian_Client']]],
+  ['get_5faccel_5fz',['get_accel_z',['../namespace_sensorian___client.html#af2ffc552d3d60f9e0874f1192ae50f21',1,'Sensorian_Client']]],
+  ['get_5fall_5fconfig',['get_all_config',['../namespace_sensorian___client.html#a50eae5aae684119262d6cdb962e841f6',1,'Sensorian_Client']]],
+  ['get_5fambient_5fpressure',['get_ambient_pressure',['../namespace_sensorian___client.html#a8597ce30da6666aa199dd76eb59695f6',1,'Sensorian_Client']]],
+  ['get_5fambient_5ftemp',['get_ambient_temp',['../namespace_sensorian___client.html#a75d0ad7e74826e7da2012b1009ce3bf2',1,'Sensorian_Client']]],
+  ['get_5fbutton',['get_button',['../namespace_sensorian___client.html#af93f98244ee6ff104e09a566c980b3e8',1,'Sensorian_Client']]],
+  ['get_5fconfig_5fvalue',['get_config_value',['../namespace_sensorian___client.html#afadbceb9732c60f56b565042fd644b7d',1,'Sensorian_Client']]],
+  ['get_5fcpu_5ftemp',['get_cpu_temp',['../namespace_sensorian___client.html#a1e95e082422a89f08e5fb2904f9c209d',1,'Sensorian_Client']]],
+  ['get_5fdate_5ftime',['get_date_time',['../namespace_sensorian___client.html#a2f80a81d4e69f5ba7e5d5591887ad753',1,'Sensorian_Client']]],
+  ['get_5finterface_5fip',['get_interface_ip',['../namespace_sensorian___client.html#a9f907540ad52bc1c1ebcce9e598e9be6',1,'Sensorian_Client']]],
+  ['get_5flight',['get_light',['../namespace_sensorian___client.html#adfb0163f0fc88760cc9fa8753b747018',1,'Sensorian_Client']]],
+  ['get_5fmag_5fx',['get_mag_x',['../namespace_sensorian___client.html#aa8e247cc7f3636556e6a220475c40b10',1,'Sensorian_Client']]],
+  ['get_5fmag_5fy',['get_mag_y',['../namespace_sensorian___client.html#a84da8c52ace931225d94281b3d1f37e1',1,'Sensorian_Client']]],
+  ['get_5fmag_5fz',['get_mag_z',['../namespace_sensorian___client.html#ac7d78b27121c140214b739aaf6a59d1a',1,'Sensorian_Client']]],
+  ['get_5fmenu_5felements',['get_menu_elements',['../namespace_sensorian___client.html#a29753d5abc3740304a1fd045fc77476d',1,'Sensorian_Client']]],
+  ['get_5fmode',['get_mode',['../namespace_sensorian___client.html#ad3968acd09729e1c9d90715dc9aab35f',1,'Sensorian_Client']]],
+  ['get_5fpassword',['get_password',['../namespace_sensorian___client.html#ac98b63dbe6c7d0a61c530d6e7ac0d7a7',1,'Sensorian_Client']]],
+  ['get_5fpublic_5fip',['get_public_ip',['../namespace_sensorian___client.html#adc3f2e8501b9e8f9a6cf1a1d8d84e43f',1,'Sensorian_Client']]],
+  ['get_5fserial',['get_serial',['../namespace_sensorian___client.html#a5ee55c998b04cf40fc6b680604f96884',1,'Sensorian_Client']]],
+  ['get_5fwatched_5finterface_5fip',['get_watched_interface_ip',['../namespace_sensorian___client.html#a63b554b7ac2844c28de58bb1a31aae7e',1,'Sensorian_Client']]]
+];
