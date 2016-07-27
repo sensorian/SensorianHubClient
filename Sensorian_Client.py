@@ -9,7 +9,6 @@ from __future__ import print_function
 import ConfigParser
 import os
 import requests
-from requests.auth import HTTPBasicAuth
 import json
 import time
 from PIL import Image
