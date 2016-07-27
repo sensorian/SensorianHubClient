@@ -211,8 +211,14 @@ def get_password(username):
 
     Accepts a single username and password from the config file.
     """
-    if username == configUsername:
-        return configPassword
+    configUsernameLock.acquire()
+    temp_config_username = configUsername
+    configUsernameLock.release()
+    if username == temp_config_username:
+        configPasswordLock.acquire()
+        temp_config_password = configPassword
+        configPasswordLock.release()
+        return temp_config_password
     return None
 
 
@@ -285,9 +291,9 @@ def run_flask():
 
 
 def shutdown_server():
-    """Method called to shut down the Flask server if it is running.
+    """Method called  by kill_flask() to shut down the Flask server if it is running.
 
-    Called on application close on upon POST request to /shutdown
+    Called on application close or upon POST request to /shutdown, should not be called directly!
     """
     func = request.environ.get('werkzeug.server.shutdown')
     if func is None:
@@ -344,15 +350,21 @@ def reboot_pi_api():
 
 
 def kill_flask():
-    """Deprecated method to shut down the Flask server. Use shutdown_server() instead.
+    """Method to shut down the Flask server.
 
-    This makes a POST to the shutdown URL with hardcoded authentication not equal to the config file.
-    Should be able to call shutdown_server() directly instead.
+    Called on system shutdown by cleanup() but can be called directly as well.
+    This makes a POST to the shutdown URL authenticated with the config file username and password.
+    Needs to be called for shutdown_server() to work.
     """
     url = 'http://127.0.0.1:5000/shutdown'
-    headers = {'Authorization': 'Basic ZHlsYW46ZHlsYW5yZXN0cGFzcw=='}
+    configUsernameLock.acquire()
+    temp_config_username = configUsername
+    configUsernameLock.release()
+    configPasswordLock.acquire()
+    temp_config_password = configPassword
+    configPasswordLock.release()
     try:
-        requests.post(url, headers=headers)
+        requests.post(url, auth=HTTPBasicAuth(temp_config_username, temp_config_password))
     except requests.exceptions.ConnectionError:
         print("Flask server already shut down")
 
@@ -2665,8 +2677,7 @@ def cleanup():
 
     Called when the Client is terminated but should be called directly when done using the Client in another project.
     """
-    # kill_flask()
-    shutdown_server()
+    kill_flask()
 
     GPIO.cleanup()
 
