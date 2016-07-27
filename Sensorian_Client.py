@@ -9,6 +9,7 @@ from __future__ import print_function
 import ConfigParser
 import os
 import requests
+from requests.auth import HTTPBasicAuth
 import json
 import time
 from PIL import Image
@@ -364,7 +365,7 @@ def kill_flask():
     temp_config_password = configPassword
     configPasswordLock.release()
     try:
-        requests.post(url, auth=HTTPBasicAuth(temp_config_username, temp_config_password))
+        requests.post(url, auth=(temp_config_username, temp_config_password))
     except requests.exceptions.ConnectionError:
         print("Flask server already shut down")
 
