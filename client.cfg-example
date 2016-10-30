@@ -27,6 +27,15 @@ interfaceinterval = 30
 #This makes a call to icanhazip.com, so keep it reasonable people
 publicinterval = 30
 
+#Section determining which sensors are being used
+[Sensors]
+#Enables the use of a hat for the Raspberry Pi
+#Must be disabled to use other sensors
+hatenabled = true
+#Selects which hat is in use
+#Options: Sensorian, Sense HAT, MATRIX Creator
+hatused = Sensorian
+
 #Section pertaining to POST and request related values
 [Requests]
 #Boolean toggle to send the various sensor values to a given server via POST request

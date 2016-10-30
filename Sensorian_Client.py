@@ -35,34 +35,61 @@ __author__ = "Dylan Kauling"
 __maintainer__ = "Dylan Kauling"
 __status__ = "Development"
 
-# Sensor initializations
 
-# RTC excepts on first call on boot
-# Loops until the RTC works
-RTCNotReady = True
-while RTCNotReady:
-    try:
-        RTC = RT_CLOCK.MCP79410()
-        RTCNotReady = False
-    except:
-        RTCNotReady = True
+CapTouch = None
+RTC = None
+imuSensor = None
+AltiBar = None
+font = None
+disp = None
 
-imuSensor = ACCEL_SENSOR.FXOS8700CQR1()
-imuSensor.configureAccelerometer()
-imuSensor.configureMagnetometer()
-imuSensor.configureOrientation()
-AltiBar = ALTIBAR.MPL3115A2()
-AltiBar.ActiveMode()
-AltiBar.BarometerMode()
-# print "Giving the Barometer 2 seconds or it won't work"
-time.sleep(2)
-CapTouch = CAP_TOUCH.CAP1203()
 
-# Prepare an object for drawing on the TFT LCD
-disp = GLCD.TFT()
-disp.initialize()
-disp.clear()
-font = ImageFont.truetype('/usr/share/fonts/truetype/freefont/FreeSansBold.ttf', 14)  # use a truetype font
+def sensorian_setup():
+    # Sensor initializations
+
+    # RTC excepts on first call on boot
+    # Loops until the RTC works
+    rtc_not_ready = True
+    global RTC
+    while rtc_not_ready:
+        try:
+            RTC = RT_CLOCK.MCP79410()
+            rtc_not_ready = False
+        except:
+            rtc_not_ready = True
+
+    global imuSensor
+    imuSensor = ACCEL_SENSOR.FXOS8700CQR1()
+    imuSensor.configureAccelerometer()
+    imuSensor.configureMagnetometer()
+    imuSensor.configureOrientation()
+    global AltiBar
+    AltiBar = ALTIBAR.MPL3115A2()
+    AltiBar.ActiveMode()
+    AltiBar.BarometerMode()
+    # print "Giving the Barometer 2 seconds or it won't work"
+    time.sleep(2)
+    global CapTouch
+    CapTouch = CAP_TOUCH.CAP1203()
+
+    # Prepare an object for drawing on the TFT LCD
+    global disp
+    disp = GLCD.TFT()
+    disp.initialize()
+    disp.clear()
+    global font
+    font = ImageFont.truetype('/usr/share/fonts/truetype/freefont/FreeSansBold.ttf', 14)  # use a truetype font
+
+    # Set up the GPIO for the touch buttons and LED
+    GPIO.setup(CAP_PIN, GPIO.IN)
+    GPIO.setup(LED_PIN, GPIO.OUT)
+    GPIO.add_event_detect(CAP_PIN, GPIO.FALLING)
+    GPIO.add_event_callback(CAP_PIN, button_event_handler)
+
+    # Enable interrupts on the buttons
+    CapTouch.clearInterrupt()
+    CapTouch.enableInterrupt(0, 0, 0x07)
+
 
 # Thread sentinels - Threads stop looping when disabled
 timeEnabled = True
@@ -101,6 +128,8 @@ button = 0
 displayEnabled = True
 printEnabled = False
 lockOrientation = False
+hatEnabled = True
+hatUsed = "Sensorian"
 defaultOrientation = 0
 sleepTime = 1
 postInterval = 4
@@ -199,6 +228,8 @@ relayAddressLock = threading.Lock()
 relayPortLock = threading.Lock()
 configUsernameLock = threading.Lock()
 configPasswordLock = threading.Lock()
+hatEnabledLock = threading.Lock()
+hatUsedLock = threading.Lock()
 
 app = Flask(__name__)
 api = Api(app)
@@ -543,22 +574,24 @@ def update_light():
     This is called by the Light Thread, but can be called directly as well.
     """
     global light
-    temp_light = -1
-    I2CLock.acquire()
-    # Try to initialize and update the light value
-    # Sometimes it excepts, so catch it if it does
-    try:
-        ambient_light = LUX_SENSOR.APDS9300()
-        channel1 = ambient_light.readChannel(1)
-        channel2 = ambient_light.readChannel(0)
-        temp_light = ambient_light.getLuxLevel(channel1, channel2)
-    except:
-        print("EXCEPTION IN LIGHT UPDATE")
-    I2CLock.release()
-    # Update the global light level when safe
-    lightLock.acquire()
-    light = temp_light
-    lightLock.release()
+    if get_config_value("hatenabled") == "True":
+        if get_config_value("hatused") == "Sensorian":
+            temp_light = -1
+            I2CLock.acquire()
+            # Try to initialize and update the light value
+            # Sometimes it excepts, so catch it if it does
+            try:
+                ambient_light = LUX_SENSOR.APDS9300()
+                channel1 = ambient_light.readChannel(1)
+                channel2 = ambient_light.readChannel(0)
+                temp_light = ambient_light.getLuxLevel(channel1, channel2)
+            except:
+                print("EXCEPTION IN LIGHT UPDATE")
+            I2CLock.release()
+            # Update the global light level when safe
+            lightLock.acquire()
+            light = temp_light
+            lightLock.release()
 
 
 def get_light():
@@ -603,46 +636,48 @@ def update_ambient():
     """
     global ambientTemp
     global ambientPressure
-    # Sensor needs some wait time between calls
-    time.sleep(0.5)
-    # Update the ambient temperature global variable
-    I2CLock.acquire()
-    temp = AltiBar.ReadTemperature()
-    I2CLock.release()
-    time.sleep(0.5)
-    ambientTempLock.acquire()
-    ambientTemp = temp
-    ambientTempLock.release()
-    # Check to see if pressure is desired
-    pressureEnabledLock.acquire()
-    temp_enabled = pressureEnabled
-    pressureEnabledLock.release()
-    # If pressure is needed, update the global variable when safe
-    if temp_enabled:
-        I2CLock.acquire()
-        press = AltiBar.ReadBarometricPressure()
-        I2CLock.release()
-        ambientPressureLock.acquire()
-        ambientPressure = press
-        ambientPressureLock.release()
-    else:
-        print("NoPressureNeeded")
-    # Getting altitude as well would result in additional sleeps
-    # for the sensor, may calculate from location/pressure/temp
-    '''
-    altitudeEnabledLock.acquire()
-    temp_enabled = pressureEnabled
-    altitudeEnabledLock.release()
-    if (temp_enabled):
-        I2CLock.acquire()
-        alt = AltiBar.ReadBarometricPressure()
-        I2CLock.release()
-        ambientPressureLock.acquire()
-        ambientPressure = press
-        ambientPressureLock.release()
-    else:
-        print "NoAltitudeNeeded"
-    '''
+    if get_config_value("hatenabled") == "True":
+        if get_config_value("hatused") == "Sensorian":
+            # Sensor needs some wait time between calls
+            time.sleep(0.5)
+            # Update the ambient temperature global variable
+            I2CLock.acquire()
+            temp = AltiBar.ReadTemperature()
+            I2CLock.release()
+            time.sleep(0.5)
+            ambientTempLock.acquire()
+            ambientTemp = temp
+            ambientTempLock.release()
+            # Check to see if pressure is desired
+            pressureEnabledLock.acquire()
+            temp_enabled = pressureEnabled
+            pressureEnabledLock.release()
+            # If pressure is needed, update the global variable when safe
+            if temp_enabled:
+                I2CLock.acquire()
+                press = AltiBar.ReadBarometricPressure()
+                I2CLock.release()
+                ambientPressureLock.acquire()
+                ambientPressure = press
+                ambientPressureLock.release()
+            else:
+                print("NoPressureNeeded")
+            # Getting altitude as well would result in additional sleeps
+            # for the sensor, may calculate from location/pressure/temp
+            '''
+            altitudeEnabledLock.acquire()
+            temp_enabled = pressureEnabled
+            altitudeEnabledLock.release()
+            if (temp_enabled):
+                I2CLock.acquire()
+                alt = AltiBar.ReadBarometricPressure()
+                I2CLock.release()
+                ambientPressureLock.acquire()
+                ambientPressure = press
+                ambientPressureLock.release()
+            else:
+                print "NoAltitudeNeeded"
+            '''
 
 
 def update_date_time():
@@ -651,12 +686,14 @@ def update_date_time():
     This is called by the Time Thread, but can be called directly as well.
     """
     global currentDateTime
-    I2CLock.acquire()
-    temp_date_time = RTC.GetTime()
-    I2CLock.release()
-    rtcLock.acquire()
-    currentDateTime = temp_date_time
-    rtcLock.release()
+    if get_config_value("hatenabled") == "True":
+        if get_config_value("hatused") == "Sensorian":
+            I2CLock.acquire()
+            temp_date_time = RTC.GetTime()
+            I2CLock.release()
+            rtcLock.acquire()
+            currentDateTime = temp_date_time
+            rtcLock.release()
 
 
 def get_date_time():
@@ -784,36 +821,34 @@ def update_accelerometer():
 
     This is called by the Accel Thread, but can be called directly as well.
     """
-    global mode
-    global modeprevious
-    global accelX
-    global accelY
-    global accelZ
-    I2CLock.acquire()
-    # If the accelerometer is ready, read the orientation and forces
-    if imuSensor.readStatusReg() & 0x80:
-        x, y, z = imuSensor.pollAccelerometer()
-        orienta = imuSensor.getOrientation()
-        I2CLock.release()
-        # Store the various global variables when safe
-        accelXLock.acquire()
-        accelX = x
-        accelXLock.release()
-        accelYLock.acquire()
-        accelY = y
-        accelYLock.release()
-        accelZLock.acquire()
-        accelZ = z
-        accelZLock.release()
-        modeLock.acquire()
-        mode = (orienta >> 1) & 0x03
-        modeLock.release()
-        if mode != modeprevious:
-            # Alert change in orientation if required
-            # print "Changed orientation"
-            modeprevious = get_mode()
-    else:
-        I2CLock.release()
+    global mode, modeprevious, accelX, accelY, accelZ
+    if get_config_value("hatenabled") == "True":
+        if get_config_value("hatused") == "Sensorian":
+            I2CLock.acquire()
+            # If the accelerometer is ready, read the orientation and forces
+            if imuSensor.readStatusReg() & 0x80:
+                x, y, z = imuSensor.pollAccelerometer()
+                orienta = imuSensor.getOrientation()
+                I2CLock.release()
+                # Store the various global variables when safe
+                accelXLock.acquire()
+                accelX = x
+                accelXLock.release()
+                accelYLock.acquire()
+                accelY = y
+                accelYLock.release()
+                accelZLock.acquire()
+                accelZ = z
+                accelZLock.release()
+                modeLock.acquire()
+                mode = (orienta >> 1) & 0x03
+                modeLock.release()
+                if mode != modeprevious:
+                    # Alert change in orientation if required
+                    # print "Changed orientation"
+                    modeprevious = get_mode()
+            else:
+                I2CLock.release()
 
 
 def update_magnetometer():
@@ -822,23 +857,25 @@ def update_magnetometer():
     This is called by the Magnet Thread, but can be called directly as well.
     """
     global magnetX, magnetY, magnetZ
-    I2CLock.acquire()
-    # If the magnetometer is ready, read the magnetic forces
-    if imuSensor.readStatusReg() & 0x80:
-        magnet_x, magnet_y, magnet_z = imuSensor.pollMagnetometer()
-        I2CLock.release()
-        # Store the various global variables when safe
-        magnetXLock.acquire()
-        magnetX = magnet_x
-        magnetXLock.release()
-        magnetYLock.acquire()
-        magnetY = magnet_y
-        magnetYLock.release()
-        magnetZLock.acquire()
-        magnetZ = magnet_z
-        magnetZLock.release()
-    else:
-        I2CLock.release()
+    if get_config_value("hatenabled") == "True":
+        if get_config_value("hatused") == "Sensorian":
+            I2CLock.acquire()
+            # If the magnetometer is ready, read the magnetic forces
+            if imuSensor.readStatusReg() & 0x80:
+                magnet_x, magnet_y, magnet_z = imuSensor.pollMagnetometer()
+                I2CLock.release()
+                # Store the various global variables when safe
+                magnetXLock.acquire()
+                magnetX = magnet_x
+                magnetXLock.release()
+                magnetYLock.acquire()
+                magnetY = magnet_y
+                magnetYLock.release()
+                magnetZLock.acquire()
+                magnetZ = magnet_z
+                magnetZLock.release()
+            else:
+                I2CLock.release()
 
 
 def get_mag_x():
@@ -1666,6 +1703,14 @@ def get_config_value(name):
         configPasswordLock.acquire()
         return_value = configPassword
         configPasswordLock.release()
+    elif name == "hatenabled":
+        hatEnabledLock.acquire()
+        return_value = hatEnabled
+        hatEnabledLock.release()
+    elif name == "hatused":
+        hatUsedLock.acquire()
+        return_value = hatUsed
+        hatUsedLock.release()
     # If variable name wasn't found in the config, return this message
     else:
         return_value = "ConfigNotFound"
@@ -1684,7 +1729,7 @@ def set_config_value(name, value):
     global defaultOrientation, lockOrientation, sleepTime, displayEnabled, printEnabled, watchedInterface, \
         cpuTempInterval, interfaceInterval, publicInterval, sendEnabled, postInterval, postTimeout, serverURL, \
         iftttKey, iftttEvent, ambientEnabled, ambientInterval, lightEnabled, lightInterval, accelEnabled, \
-        accelInterval, relayAddress, relayPort, configUsername, configPassword
+        accelInterval, relayAddress, relayPort, configUsername, configPassword, hatEnabled, hatUsed
     # UI Section
     if name == "defaultorientation":
         defaultOrientationLock.acquire()
@@ -1976,6 +2021,26 @@ def set_config_value(name, value):
             succeeded = False
         finally:
             configPasswordLock.release()
+    elif name == "hatenabled":
+        hatEnabledLock.acquire()
+        lock_bool = bool_check(str(value))
+        if lock_bool[0]:
+            hatEnabled = lock_bool[1]
+            parser.set('Sensors', 'hatenabled', str(lock_bool[1]))
+            succeeded = True
+        elif not lock_bool[0]:
+            succeeded = False
+        hatEnabledLock.release()
+    elif name == "hatused":
+        hatUsedLock.acquire()
+        try:
+            hatUsed = value
+            parser.set('Sensors', 'hatused', value)
+            succeeded = True
+        except TypeError:
+            succeeded = False
+        finally:
+            hatUsedLock.release()
     return succeeded
 
 
@@ -2011,6 +2076,9 @@ def get_all_config():
     config_list.append({'name': "cputempinterval", 'value': get_config_value("cputempinterval")})
     config_list.append({'name': "interfaceinterval", 'value': get_config_value("interfaceinterval")})
     config_list.append({'name': "publicinterval", 'value': get_config_value("publicinterval")})
+    # Sensor Section
+    config_list.append({'name': "hatenabled", 'value': get_config_value("hatenabled")})
+    config_list.append({'name': "hatused", 'value': get_config_value("hatused")})
     # Requests Section
     config_list.append({'name': "sendenabled", 'value': get_config_value("sendenabled")})
     config_list.append({'name': "postinterval", 'value': get_config_value("postinterval")})
@@ -2058,82 +2126,84 @@ def display_values():
 
     Called on a loop in the main method when enabled to keep refreshing the screen, but can be called directly as well.
     """
-    disp.clear()
-    # Checks if the orientation of the display should be locked
-    # If so, force the default orientation from the config file
-    lockOrientationLock.acquire()
-    temp_lock_orientation = lockOrientation
-    lockOrientationLock.release()
-    accelEnabledLock.acquire()
-    temp_accel_enabled = accelEnabled
-    accelEnabledLock.release()
-    if not temp_lock_orientation and temp_accel_enabled:
-        orientation = get_mode()
-    else:
-        defaultOrientationLock.acquire()
-        orientation = defaultOrientation
-        defaultOrientationLock.release()
-    # Depending on the orientation, prepare the display layout image
-    if orientation == 0:
-        text_draw = Image.new('RGB', (160, 128))
-        angle = 90
-    elif orientation == 1:
-        text_draw = Image.new('RGB', (160, 128))
-        angle = 270
-    elif orientation == 2:
-        text_draw = Image.new('RGB', (128, 160))
-        angle = 180
-    elif orientation == 3:
-        text_draw = Image.new('RGB', (128, 160))
-        angle = 0
-    else:
-        text_draw = Image.new('RGB', (128, 160))
-        angle = 90
+    if get_config_value("hatenabled") == "True":
+        if get_config_value("hatused") == "Sensorian":
+            disp.clear()
+            # Checks if the orientation of the display should be locked
+            # If so, force the default orientation from the config file
+            lockOrientationLock.acquire()
+            temp_lock_orientation = lockOrientation
+            lockOrientationLock.release()
+            accelEnabledLock.acquire()
+            temp_accel_enabled = accelEnabled
+            accelEnabledLock.release()
+            if not temp_lock_orientation and temp_accel_enabled:
+                orientation = get_mode()
+            else:
+                defaultOrientationLock.acquire()
+                orientation = defaultOrientation
+                defaultOrientationLock.release()
+            # Depending on the orientation, prepare the display layout image
+            if orientation == 0:
+                text_draw = Image.new('RGB', (160, 128))
+                angle = 90
+            elif orientation == 1:
+                text_draw = Image.new('RGB', (160, 128))
+                angle = 270
+            elif orientation == 2:
+                text_draw = Image.new('RGB', (128, 160))
+                angle = 180
+            elif orientation == 3:
+                text_draw = Image.new('RGB', (128, 160))
+                angle = 0
+            else:
+                text_draw = Image.new('RGB', (128, 160))
+                angle = 90
 
-    # Draw the text objects for all the respective variables by getting
-    # the latest values from their Get methods
-    text_draw2 = ImageDraw.Draw(text_draw)
+            # Draw the text objects for all the respective variables by getting
+            # the latest values from their Get methods
+            text_draw2 = ImageDraw.Draw(text_draw)
 
-    inMenuLock.acquire()
-    temp_in_menu = inMenu
-    inMenuLock.release()
-    if not temp_in_menu:
-        text_draw2.text((0, 0), "HW: " + get_serial(), font=font)
-        rtc_time = get_date_time()
-        dat = "Date: " + str(rtc_time.date) + "/" + str(rtc_time.month) + "/" + str(
-            rtc_time.year)  # convert to string and print it
-        text_draw2.text((0, 12), dat, font=font)
-        tmr = "Time: " + '{:02d}'.format(rtc_time.hour) + ":" + '{:02d}'.format(rtc_time.min) + ":" + '{:02d}'.format(
-            rtc_time.sec)  # convert to string and print it
-        text_draw2.text((0, 24), tmr, font=font)
-        text_draw2.text((0, 36), "Light: " + str(get_light()) + " lx", font=font)
-        text_draw2.text((0, 48), "Temp: " + str(get_ambient_temp()) + " C", font=font)
-        text_draw2.text((0, 60), "Press: " + str(get_ambient_pressure()) + " kPa", font=font)
-        text_draw2.text((0, 72), "CPU Temp: " + str(get_cpu_temp()) + " C", font=font)
-        text_draw2.text((0, 84), "LAN IP: " + str(get_watched_interface_ip()), font=font)
-        text_draw2.text((0, 96), "WAN IP: " + str(get_public_ip()), font=font)
-        # text_draw2.text((0, 108), "Button Pressed: " + str(GetButton()), font=font)
-        text_draw2.text((0, 108), "X: " + str(get_accel_x()) + " Y: " + str(get_accel_y()) + " Z: " +
-                        str(get_accel_z()), font=font)
-    else:
-        menuElementsLock.acquire()
-        temp_elements = menuElements
-        menuElementsLock.release()
-        for x in range(0, 10):
-            try:
-                text_draw2.text((18, x * 12), str(temp_elements[x]), font=font)
-            except IndexError:
-                break
-        menuPositionLock.acquire()
-        temp_menu_pos = menuPosition
-        menuPositionLock.release()
-        text_draw2.text((0, temp_menu_pos * 12), ">>", font=font)
+            inMenuLock.acquire()
+            temp_in_menu = inMenu
+            inMenuLock.release()
+            if not temp_in_menu:
+                text_draw2.text((0, 0), "HW: " + get_serial(), font=font)
+                rtc_time = get_date_time()
+                dat = "Date: " + str(rtc_time.date) + "/" + str(rtc_time.month) + "/" + str(
+                    rtc_time.year)  # convert to string and print it
+                text_draw2.text((0, 12), dat, font=font)
+                tmr = "Time: " + '{:02d}'.format(rtc_time.hour) + ":" + '{:02d}'.format(rtc_time.min) + ":" + '{:02d}'.format(
+                    rtc_time.sec)  # convert to string and print it
+                text_draw2.text((0, 24), tmr, font=font)
+                text_draw2.text((0, 36), "Light: " + str(get_light()) + " lx", font=font)
+                text_draw2.text((0, 48), "Temp: " + str(get_ambient_temp()) + " C", font=font)
+                text_draw2.text((0, 60), "Press: " + str(get_ambient_pressure()) + " kPa", font=font)
+                text_draw2.text((0, 72), "CPU Temp: " + str(get_cpu_temp()) + " C", font=font)
+                text_draw2.text((0, 84), "LAN IP: " + str(get_watched_interface_ip()), font=font)
+                text_draw2.text((0, 96), "WAN IP: " + str(get_public_ip()), font=font)
+                # text_draw2.text((0, 108), "Button Pressed: " + str(GetButton()), font=font)
+                text_draw2.text((0, 108), "X: " + str(get_accel_x()) + " Y: " + str(get_accel_y()) + " Z: " +
+                                str(get_accel_z()), font=font)
+            else:
+                menuElementsLock.acquire()
+                temp_elements = menuElements
+                menuElementsLock.release()
+                for x in range(0, 10):
+                    try:
+                        text_draw2.text((18, x * 12), str(temp_elements[x]), font=font)
+                    except IndexError:
+                        break
+                menuPositionLock.acquire()
+                temp_menu_pos = menuPosition
+                menuPositionLock.release()
+                text_draw2.text((0, temp_menu_pos * 12), ">>", font=font)
 
-    # Rotate the image to the set orientation and add it to the LCD
-    text_draw3 = text_draw.rotate(angle)
-    canvas = Image.new("RGB", (128, 160))
-    canvas.paste(text_draw3, (0, 0))
-    disp.display(canvas)
+            # Rotate the image to the set orientation and add it to the LCD
+            text_draw3 = text_draw.rotate(angle)
+            canvas = Image.new("RGB", (128, 160))
+            canvas.paste(text_draw3, (0, 0))
+            disp.display(canvas)
 
 
 def print_values():
@@ -2399,6 +2469,30 @@ def config():
     finally:
         print("Public IP Interval: " + str(publicInterval))
 
+    global hatEnabled
+    try:
+        hatEnabled = parser.getboolean('Sensors', 'hatenabled')
+    except (ConfigParser.NoSectionError, ConfigParser.NoOptionError, ValueError):
+        try:
+            parser.set('Sensors', 'hatenabled', str(hatEnabled))
+        except ConfigParser.NoSectionError:
+            parser.add_section('Sensors')
+            parser.set('Sensors', 'hatenabled', str(hatEnabled))
+    finally:
+        print("Hat Enabled: " + str(hatEnabled))
+
+    global hatUsed
+    try:
+        hatUsed = parser.get('Sensors', 'hatused')
+    except (ConfigParser.NoSectionError, ConfigParser.NoOptionError, ValueError):
+        try:
+            parser.set('Sensors', 'hatused', hatUsed)
+        except ConfigParser.NoSectionError:
+            parser.add_section('Sensors')
+            parser.set('Sensors', 'hatused', hatUsed)
+    finally:
+        print("Hat Used: " + hatUsed)
+
     global accelEnabled
     try:
         accelEnabled = parser.getboolean('Accelerometer', 'accelenabled')
@@ -2604,6 +2698,10 @@ def setup():
     # CPU serial shouldn't change so it is only updated once
     update_serial()
 
+    if get_config_value("hatenabled") == "True":
+        if get_config_value("hatused") == "Sensorian":
+            sensorian_setup()
+
     # Create threads and start them to monitor the various sensors and
     # IP variables at their given intervals, 1 second interval for time/buttons
     reboot_thread("TimeThread", 1, "UpdateDateTime")
@@ -2626,16 +2724,6 @@ def setup():
     if check_sentinel("SocketSentinel"):
         socket_thread = SocketThread()
         socket_thread.start()
-
-    # Set up the GPIO for the touch buttons and LED
-    GPIO.setup(CAP_PIN, GPIO.IN)
-    GPIO.setup(LED_PIN, GPIO.OUT)
-    GPIO.add_event_detect(CAP_PIN, GPIO.FALLING)
-    GPIO.add_event_callback(CAP_PIN, button_event_handler)
-
-    # Enable interrupts on the buttons
-    CapTouch.clearInterrupt()
-    CapTouch.enableInterrupt(0, 0, 0x07)
 
 
 def main():
