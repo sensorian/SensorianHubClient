@@ -30,6 +30,7 @@ from flask import Flask, abort, request
 from flask_restful import Api, Resource, reqparse
 from flask_httpauth import HTTPBasicAuth
 from multiprocessing import Process
+from sense_hat import SenseHat
 
 __author__ = "Dylan Kauling"
 __maintainer__ = "Dylan Kauling"
@@ -42,7 +43,7 @@ imuSensor = None
 AltiBar = None
 font = None
 disp = None
-
+sensehat = None
 
 def sensorian_setup():
     # Sensor initializations
@@ -89,6 +90,11 @@ def sensorian_setup():
     # Enable interrupts on the buttons
     CapTouch.clearInterrupt()
     CapTouch.enableInterrupt(0, 0, 0x07)
+
+
+def sense_hat_setup():
+    global sensehat
+    sensehat = SenseHat()
 
 
 # Thread sentinels - Threads stop looping when disabled
