@@ -11,6 +11,7 @@ import os
 import requests
 import json
 import time
+import datetime
 from PIL import Image
 from PIL import ImageDraw
 from PIL import ImageFont
@@ -113,7 +114,7 @@ socketEnabled = False
 magnetEnabled = True
 
 # Global sensor/IP variables protected by locks below if required
-currentDateTime = RT_CLOCK.RTCC_Struct(0, 0, 0, 1, 1, 1, 2016)
+currentDateTime = datetime.datetime(2000, 1, 1, 0, 0, 0)
 cpuSerial = "0000000000000000"
 light = -1
 ambientTemp = -1
@@ -598,6 +599,10 @@ def update_light():
             lightLock.acquire()
             light = temp_light
             lightLock.release()
+        elif get_config_value("hatused") == "Sense HAT":
+            lightLock.acquire()
+            light = -1
+            lightLock.release()
 
 
 def get_light():
@@ -684,6 +689,28 @@ def update_ambient():
             else:
                 print "NoAltitudeNeeded"
             '''
+        elif get_config_value("hatused") == "Sense HAT":
+            # Update the ambient temperature global variable
+            I2CLock.acquire()
+            temp = sensehat.temperature
+            I2CLock.release()
+            ambientTempLock.acquire()
+            ambientTemp = temp
+            ambientTempLock.release()
+            # Check to see if pressure is desired
+            pressureEnabledLock.acquire()
+            temp_enabled = pressureEnabled
+            pressureEnabledLock.release()
+            # If pressure is needed, update the global variable when safe
+            if temp_enabled:
+                I2CLock.acquire()
+                press = sensehat.pressure
+                I2CLock.release()
+                ambientPressureLock.acquire()
+                ambientPressure = press
+                ambientPressureLock.release()
+            else:
+                print("NoPressureNeeded")
 
 
 def update_date_time():
@@ -697,9 +724,24 @@ def update_date_time():
             I2CLock.acquire()
             temp_date_time = RTC.GetTime()
             I2CLock.release()
+            temp_date = datetime.date(temp_date_time.year, temp_date_time.month, temp_date_time.date)
+            temp_time = datetime.time(temp_date_time.hour, temp_date_time.min, temp_date_time.sec)
+            temp_datetime = datetime.datetime.combine(temp_date, temp_time)
             rtcLock.acquire()
-            currentDateTime = temp_date_time
+            currentDateTime = temp_datetime
             rtcLock.release()
+        elif get_config_value("hatused") == "Sense HAT":
+            rtcLock.acquire()
+            currentDateTime = datetime.datetime.now()
+            rtcLock.release()
+        else:
+            rtcLock.acquire()
+            currentDateTime = datetime.datetime.now()
+            rtcLock.release()
+    else:
+        rtcLock.acquire()
+        currentDateTime = datetime.datetime.now()
+        rtcLock.release()
 
 
 def get_date_time():
@@ -855,6 +897,22 @@ def update_accelerometer():
                     modeprevious = get_mode()
             else:
                 I2CLock.release()
+        elif get_config_value("hatused") == "Sense HAT":
+            I2CLock.acquire()
+            temp_accel = sensehat.accelerometer
+            I2CLock.release()
+            x = temp_accel.get('x')
+            y = temp_accel.get('y')
+            z = temp_accel.get('z')
+            accelXLock.acquire()
+            accelX = x
+            accelXLock.release()
+            accelYLock.acquire()
+            accelY = y
+            accelYLock.release()
+            accelZLock.acquire()
+            accelZ = z
+            accelZLock.release()
 
 
 def update_magnetometer():
@@ -882,6 +940,22 @@ def update_magnetometer():
                 magnetZLock.release()
             else:
                 I2CLock.release()
+        elif get_config_value("hatused") == "Sense HAT":
+            I2CLock.acquire()
+            temp_mag = sensehat.compass_raw
+            I2CLock.release()
+            magnet_x = temp_mag.get('x')
+            magnet_y = temp_mag.get('y')
+            magnet_z = temp_mag.get('z')
+            magnetXLock.acquire()
+            magnetX = magnet_x
+            magnetXLock.release()
+            magnetYLock.acquire()
+            magnetY = magnet_y
+            magnetYLock.release()
+            magnetZLock.acquire()
+            magnetZ = magnet_z
+            magnetZLock.release()
 
 
 def get_mag_x():
@@ -2176,11 +2250,11 @@ def display_values():
             if not temp_in_menu:
                 text_draw2.text((0, 0), "HW: " + get_serial(), font=font)
                 rtc_time = get_date_time()
-                dat = "Date: " + str(rtc_time.date) + "/" + str(rtc_time.month) + "/" + str(
+                dat = "Date: " + str(rtc_time.day) + "/" + str(rtc_time.month) + "/" + str(
                     rtc_time.year)  # convert to string and print it
                 text_draw2.text((0, 12), dat, font=font)
-                tmr = "Time: " + '{:02d}'.format(rtc_time.hour) + ":" + '{:02d}'.format(rtc_time.min) + ":" + '{:02d}'.format(
-                    rtc_time.sec)  # convert to string and print it
+                tmr = "Time: " + '{:02d}'.format(rtc_time.hour) + ":" + '{:02d}'.format(rtc_time.minute) + \
+                      ":" + '{:02d}'.format(rtc_time.second)  # convert to string and print it
                 text_draw2.text((0, 24), tmr, font=font)
                 text_draw2.text((0, 36), "Light: " + str(get_light()) + " lx", font=font)
                 text_draw2.text((0, 48), "Temp: " + str(get_ambient_temp()) + " C", font=font)
@@ -2227,10 +2301,10 @@ def print_values():
     # variables and print them to the console
     rtc_time = get_date_time()
     print("HW: " + get_serial())
-    print("Date: " + str(rtc_time.date) + "/" + str(rtc_time.month) + "/" + str(
+    print("Date: " + str(rtc_time.day) + "/" + str(rtc_time.month) + "/" + str(
         rtc_time.year))  # convert to string and print it
-    print("Time: " + '{:02d}'.format(rtc_time.hour) + ":" + '{:02d}'.format(rtc_time.min) + ":" + '{:02d}'.format(
-        rtc_time.sec))
+    print("Time: " + '{:02d}'.format(rtc_time.hour) + ":" + '{:02d}'.format(rtc_time.minute) + ":" + '{:02d}'.format(
+        rtc_time.second))
     print("Light: " + str(get_light()) + " lx")
     print("Temp: " + str(get_ambient_temp()) + " C")
     print("Pressure: " + str(get_ambient_pressure()) + " kPa")
@@ -2249,8 +2323,8 @@ def send_values():
     """
     rtc_time = get_date_time()
     time_string = "20" + '{:02d}'.format(rtc_time.year) + "-" + '{:02d}'.format(rtc_time.month) + "-" + '{:02d}'.format(
-        rtc_time.date) + " " + '{:02d}'.format(rtc_time.hour) + ":" + '{:02d}'.format(
-        rtc_time.min) + ":" + '{:02d}'.format(rtc_time.sec)
+        rtc_time.day) + " " + '{:02d}'.format(rtc_time.hour) + ":" + '{:02d}'.format(
+        rtc_time.minute) + ":" + '{:02d}'.format(rtc_time.second)
     # Prepare a JSON of the variables
     payload = {'HW': str(get_serial()),
                'TS': time_string,
@@ -2707,6 +2781,8 @@ def setup():
     if get_config_value("hatenabled") == "True":
         if get_config_value("hatused") == "Sensorian":
             sensorian_setup()
+        elif get_config_value("hatused") == "Sense HAT":
+            sense_hat_setup()
 
     # Create threads and start them to monitor the various sensors and
     # IP variables at their given intervals, 1 second interval for time/buttons
@@ -2772,8 +2848,10 @@ def cleanup():
     Called when the Client is terminated but should be called directly when done using the Client in another project.
     """
     kill_flask()
-
-    GPIO.cleanup()
+    
+    if get_config_value("hatenabled") == "True":
+        if get_config_value("hatused") == "Sensorian":
+            GPIO.cleanup()
 
     write_config()
 
