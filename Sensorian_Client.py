@@ -797,6 +797,9 @@ def update_watched_interface_ip():
     interfaceIPLock.acquire()
     interfaceIP = ipaddr
     interfaceIPLock.release()
+    if get_config_value("hatenabled") == "True":
+        if get_config_value("hatused") == "Sense HAT":
+            sensehat.show_message("IP: " + ipaddr)
 
 
 def get_watched_interface_ip():
@@ -2848,7 +2851,7 @@ def cleanup():
     Called when the Client is terminated but should be called directly when done using the Client in another project.
     """
     kill_flask()
-    
+
     if get_config_value("hatenabled") == "True":
         if get_config_value("hatused") == "Sensorian":
             GPIO.cleanup()
