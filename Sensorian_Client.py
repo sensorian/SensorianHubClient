@@ -2329,6 +2329,15 @@ def send_values():
         rtc_time.day) + " " + '{:02d}'.format(rtc_time.hour) + ":" + '{:02d}'.format(
         rtc_time.minute) + ":" + '{:02d}'.format(rtc_time.second)
     # Prepare a JSON of the variables
+    if get_config_value("hatenabled") == "True" and get_config_value("hatused") == "Sensorian":
+        accel_x = get_accel_x() / 1000.0
+        accel_y = get_accel_y() / 1000.0
+        accel_z = get_accel_z() / 1000.0
+    else:
+        accel_x = get_accel_x()
+        accel_y = get_accel_y()
+        accel_z = get_accel_z()
+
     payload = {'HW': str(get_serial()),
                'TS': time_string,
                'IP': str(get_watched_interface_ip()),
@@ -2336,9 +2345,9 @@ def send_values():
                'LUX': str(get_light()),
                'Temp': str(get_ambient_temp()),
                'Press': str(get_ambient_pressure()),
-               'X': '{:04f}'.format(get_accel_x()),
-               'Y': '{:04f}'.format(get_accel_y()),
-               'Z': '{:04f}'.format(get_accel_z())
+               'X': str(accel_x),
+               'Y': str(accel_y),
+               'Z': str(accel_z)
                }
     # Attempt to POST the JSON to the given URL, catching any failures
     serverURLLock.acquire()
