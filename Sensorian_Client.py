@@ -902,7 +902,7 @@ def update_accelerometer():
                 I2CLock.release()
         elif get_config_value("hatused") == "Sense HAT":
             I2CLock.acquire()
-            temp_accel = sensehat.accelerometer
+            temp_accel = sensehat.accelerometer_raw
             I2CLock.release()
             x = temp_accel.get('x')
             y = temp_accel.get('y')
@@ -2325,7 +2325,7 @@ def send_values():
     Called by the Send Thread on a regular interval if enabled, but can be called directly as well.
     """
     rtc_time = get_date_time()
-    time_string = "20" + '{:02d}'.format(rtc_time.year) + "-" + '{:02d}'.format(rtc_time.month) + "-" + '{:02d}'.format(
+    time_string = '{:04d}'.format(rtc_time.year) + "-" + '{:02d}'.format(rtc_time.month) + "-" + '{:02d}'.format(
         rtc_time.day) + " " + '{:02d}'.format(rtc_time.hour) + ":" + '{:02d}'.format(
         rtc_time.minute) + ":" + '{:02d}'.format(rtc_time.second)
     # Prepare a JSON of the variables
@@ -2336,9 +2336,6 @@ def send_values():
                'LUX': str(get_light()),
                'Temp': str(get_ambient_temp()),
                'Press': str(get_ambient_pressure()),
-               'X': str(get_accel_x() / 1000.0),
-               'Y': str(get_accel_y() / 1000.0),
-               'Z': str(get_accel_z() / 1000.0)
                }
     # Attempt to POST the JSON to the given URL, catching any failures
     serverURLLock.acquire()
