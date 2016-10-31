@@ -724,7 +724,7 @@ def update_date_time():
             I2CLock.acquire()
             temp_date_time = RTC.GetTime()
             I2CLock.release()
-            temp_date = datetime.date(temp_date_time.year, temp_date_time.month, temp_date_time.date)
+            temp_date = datetime.date(2000 + temp_date_time.year, temp_date_time.month, temp_date_time.date)
             temp_time = datetime.time(temp_date_time.hour, temp_date_time.min, temp_date_time.sec)
             temp_datetime = datetime.datetime.combine(temp_date, temp_time)
             rtcLock.acquire()
