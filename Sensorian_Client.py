@@ -2336,6 +2336,9 @@ def send_values():
                'LUX': str(get_light()),
                'Temp': str(get_ambient_temp()),
                'Press': str(get_ambient_pressure()),
+               'X': '{:04f}'.format(get_accel_x()),
+               'Y': '{:04f}'.format(get_accel_y()),
+               'Z': '{:04f}'.format(get_accel_z())
                }
     # Attempt to POST the JSON to the given URL, catching any failures
     serverURLLock.acquire()
